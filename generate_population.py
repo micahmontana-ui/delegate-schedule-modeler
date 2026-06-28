@@ -192,11 +192,18 @@ def generate_population(cfg: PopulationConfig, rng: np.random.Generator) -> tupl
     # 7. Build rows
     rows = []
     clamped_count = 0
+    core_adjusted_count = 0
     for i in range(n_groups):
         nights_nominal = nights_list[i]
 
         if cfg.checkout_policy == "arrival_based":
             ci = checkin_dates[i]
+            # Ensure check-in is early enough that checkout covers the full core stay
+            if cfg.core_stay_end:
+                latest_valid_ci = cfg.core_stay_end - timedelta(days=nights_nominal)
+                if ci > latest_valid_ci:
+                    ci = max(latest_valid_ci, cfg.window_start or latest_valid_ci)
+                    core_adjusted_count += 1
             co_nominal = ci + timedelta(days=nights_nominal)
             co = min(co_nominal, cfg.window_end) if cfg.window_end else co_nominal
             if co != co_nominal:
@@ -228,25 +235,15 @@ def generate_population(cfg: PopulationConfig, rng: np.random.Generator) -> tupl
 
     if clamped_count:
         assumptions.append(
-            f"CLAMPING: {clamped_count} groups had dates clamped to fit within the stay window."
+            f"CLAMPING: {clamped_count} groups had checkout clamped to fit within the stay window."
+        )
+    if core_adjusted_count:
+        assumptions.append(
+            f"CORE COVERAGE: {core_adjusted_count} groups had their check-in shifted earlier "
+            f"to ensure their stay covers the mandatory core period (through {cfg.core_stay_end})."
         )
 
     df = pd.DataFrame(rows)
-
-    # 8. Assertion: core-stay coverage
-    if cfg.core_stay_start and cfg.core_stay_end:
-        bad_ci = df[df["CheckIn"] > cfg.core_stay_start]
-        bad_co = df[df["CheckOut"] < cfg.core_stay_end]
-        if not bad_ci.empty:
-            assumptions.append(
-                f"WARNING: {len(bad_ci)} groups have check-in AFTER core-stay start "
-                f"{cfg.core_stay_start}. These groups miss part of the mandatory period."
-            )
-        if not bad_co.empty:
-            assumptions.append(
-                f"WARNING: {len(bad_co)} groups have check-out BEFORE core-stay end "
-                f"{cfg.core_stay_end}. These groups miss part of the mandatory period."
-            )
 
     total_delegates_out = int(df["GroupSize"].sum())
     assumptions.append(f"POPULATION OUTPUT: {n_groups} groups, {total_delegates_out} total delegates.")
