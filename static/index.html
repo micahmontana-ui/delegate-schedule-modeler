@@ -892,6 +892,11 @@ function renderStops() {
 
   // Restore saved stops as chips
   (data.stopNames || []).forEach(s => _addStopChip(s));
+  // Restore hotel → stop assignments
+  document.querySelectorAll('.stop-assign').forEach(sel => {
+    const saved = data.hotelToStop?.[sel.dataset.hotel];
+    if (saved) sel.value = saved;
+  });
   // Enter key on input
   document.getElementById('stop-name-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); addStopChip(); }
@@ -1212,8 +1217,8 @@ function addOptActivity(a={}) {
       <div class="field" style="margin:0">
         <label>Requires Evening Gathering first?</label>
         <select class="opt-prereq-eg">
-          <option value="yes" ${a.prerequisite_group==='Evening Gathering'||(!a.prerequisite&&!a.prerequisite_group)?'selected':''}>Yes — group must have EG AM or EG PM first</option>
-          <option value="no" ${a.prerequisite_group!=='Evening Gathering'&&(a.prerequisite||a.prerequisite_group==='none')?'selected':''}>No prerequisite</option>
+          <option value="yes" ${a.prerequisite_group==='Evening Gathering'?'selected':''}>Yes — group must have EG AM or EG PM first</option>
+          <option value="no" ${a.prerequisite_group!=='Evening Gathering'?'selected':''}>No prerequisite</option>
         </select>
       </div>
     </div>
