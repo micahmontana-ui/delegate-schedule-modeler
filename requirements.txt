@@ -1,0 +1,7 @@
+fastapi>=0.111
+uvicorn[standard]>=0.29
+numpy>=1.24
+pandas>=2.0
+openpyxl>=3.1
+python-docx>=1.1
+anthropic>=0.28

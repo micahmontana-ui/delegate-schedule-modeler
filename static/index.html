@@ -1,0 +1,2024 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Delegate Schedule Modeler</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f0f8fc;
+  --surface: #FFFFFF;
+  --surface2: #e4f4fa;
+  --surface3: #cceaf5;
+  --border: #b0d9ec;
+  --border-light: #c8e6f4;
+  --accent: #015480;
+  --accent-hover: #0F91BB;
+  --accent-dim: rgba(1,84,128,.08);
+  --text: #01293d;
+  --muted: #1a5470;
+  --muted2: #3a7a9c;
+  --success: #69B6AF;
+  --success-dim: rgba(105,182,175,.15);
+  --warn: #FFB31C;
+  --error: #C65B41;
+  --warm2: #DE6E4A;
+  --teal-bright: #0F91BB;
+  --teal-light: #6EC5EA;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 2px 16px rgba(1,84,128,.10);
+  --font: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
+}
+body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100dvh; display: flex; flex-direction: column; -webkit-font-smoothing: antialiased; }
+
+/* Header */
+header {
+  display:flex; align-items:center; gap:14px; padding:0 28px;
+  height:60px;
+  background: linear-gradient(to right, #015480, #0F91BB);
+  border-bottom:none; flex-shrink:0;
+  box-shadow: 0 2px 12px rgba(1,84,128,.25);
+}
+header h1 { color:#fff; }
+header .sub { color:rgba(255,255,255,.65); }
+header .header-actions { margin-left:auto; display:flex; gap:8px; }
+.btn-sm {
+  padding:6px 14px; font-size:12px; font-weight:500; border-radius:var(--radius-sm);
+  border:1px solid rgba(255,255,255,.3); background:rgba(255,255,255,.12);
+  color:#fff; cursor:pointer; white-space:nowrap; transition:all .15s;
+}
+.btn-sm:hover { border-color:#fff; background:rgba(255,255,255,.22); color:#fff; }
+.logo {
+  width:34px; height:34px; flex-shrink:0;
+  background: linear-gradient(135deg, #0F91BB, #6EC5EA);
+  border-radius:9px; display:flex; align-items:center; justify-content:center;
+  font-size:17px; box-shadow: 0 2px 8px rgba(15,145,187,.4);
+}
+header h1 { font-size:15px; font-weight:700; letter-spacing:-.01em; }
+header .sub { font-size:11px; color:var(--muted2); margin-top:2px; letter-spacing:.01em; }
+
+/* Layout */
+.app { display:flex; flex:1; overflow:hidden; height:calc(100dvh - 60px); }
+
+/* Wizard panel */
+.wizard { flex:1; overflow-y:auto; padding:36px 28px 40px; max-width:740px; margin:0 auto; width:100%; }
+
+/* Progress */
+.progress { display:flex; gap:0; margin-bottom:40px; padding:0 4px; }
+.step { flex:1; display:flex; flex-direction:column; align-items:center; gap:7px; cursor:default; }
+.step-dot {
+  width:30px; height:30px; border-radius:50%; border:2px solid var(--border-light);
+  background:var(--surface2); display:flex; align-items:center; justify-content:center;
+  font-size:11px; font-weight:700; color:var(--muted2); position:relative; z-index:1;
+  transition:all .25s;
+}
+.step.done .step-dot { background:var(--accent); border-color:var(--accent); color:#fff; box-shadow:0 0 0 3px rgba(15,145,187,.22); }
+.step.active .step-dot { border-color:var(--accent); color:var(--accent); box-shadow:0 0 0 4px rgba(15,145,187,.18); background:var(--surface3); }
+.step-label { font-size:10px; font-weight:500; color:var(--muted2); text-align:center; letter-spacing:.02em; }
+.step.active .step-label { color:var(--accent); }
+.step.done .step-label { color:var(--muted); }
+.step-line { flex:1; height:2px; background:var(--border); margin-top:14px; transition:background .3s; border-radius:2px; }
+.step.done .step-line { background:var(--accent); }
+
+/* Stage card */
+.stage-card {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius); padding:32px;
+  margin-bottom:20px;
+  box-shadow: 0 2px 12px rgba(1,84,128,.07);
+}
+.stage-title {
+  font-size:20px; font-weight:700; margin-bottom:6px;
+  letter-spacing:-.02em;
+  background: linear-gradient(90deg, var(--text), var(--muted));
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+}
+.stage-desc { font-size:13px; color:var(--muted); margin-bottom:28px; line-height:1.6; }
+
+/* Form elements */
+.field { margin-bottom:22px; }
+.field label { display:block; font-size:13px; font-weight:600; margin-bottom:7px; color:var(--text); letter-spacing:.01em; }
+.field .hint { font-size:11px; color:var(--muted2); margin-top:5px; line-height:1.5; }
+.field .error-msg { font-size:11px; color:var(--error); margin-top:4px; display:none; }
+input[type=text], input[type=number], input[type=date], textarea, select {
+  width:100%; background:var(--surface2); border:1px solid var(--border-light); border-radius:var(--radius-sm);
+  color:var(--text); font-family:var(--font); font-size:14px; padding:10px 13px;
+  transition:border-color .15s, box-shadow .15s;
+}
+input:focus, textarea:focus, select:focus {
+  outline:none; border-color:var(--accent);
+  box-shadow: 0 0 0 3px rgba(15,145,187,.15);
+}
+input.invalid, textarea.invalid { border-color:var(--error); }
+textarea { resize:vertical; min-height:80px; }
+select option { background:var(--surface2); }
+
+.row { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.row-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
+
+/* Distribution table */
+.dist-table { width:100%; border-collapse:collapse; margin-top:8px; }
+.dist-table th { text-align:left; font-size:11px; font-weight:600; color:var(--muted2); padding:0 0 8px 0; letter-spacing:.04em; text-transform:uppercase; }
+.dist-table td { padding:4px 8px 4px 0; }
+.dist-table td:last-child { padding-right:0; }
+.dist-table input { padding:7px 10px; font-size:13px; }
+.add-row-btn { font-size:12px; font-weight:500; color:var(--accent); background:none; border:none; cursor:pointer; padding:6px 0; margin-top:6px; }
+.add-row-btn:hover { color:var(--accent-hover); }
+.remove-btn { background:none; border:none; color:var(--muted2); cursor:pointer; font-size:16px; padding:4px; transition:color .15s; }
+.remove-btn:hover { color:var(--error); }
+.dist-total { font-size:12px; font-weight:500; margin-top:8px; }
+.dist-total.ok { color:var(--success); }
+.dist-total.bad { color:var(--error); }
+
+/* Activities */
+.activity-card {
+  background:var(--surface2); border:1px solid var(--border-light);
+  border-radius:var(--radius-sm); padding:18px; margin-bottom:12px;
+  position:relative; transition:border-color .15s;
+}
+.activity-card:hover { border-color:var(--border-light); }
+.activity-card .remove-act { position:absolute; top:14px; right:14px; background:none; border:none; color:var(--muted2); cursor:pointer; font-size:18px; transition:color .15s; }
+.activity-card .remove-act:hover { color:var(--error); }
+.activity-card h4 { font-size:13px; font-weight:600; margin-bottom:12px; }
+.add-activity-btn {
+  width:100%; padding:11px; border:1.5px dashed var(--border-light);
+  border-radius:var(--radius-sm); background:none; color:var(--muted2);
+  font-size:13px; font-weight:500; cursor:pointer; transition:all .15s;
+}
+.add-activity-btn:hover { border-color:var(--accent); color:var(--accent); background:var(--accent-dim); }
+.mutex-card { border-color:#0F91BB; background:linear-gradient(135deg, #e4f4fa, #cceaf5); }
+.date-list { display:flex; flex-direction:column; gap:0; margin-bottom:4px; }
+
+/* Date chip grid */
+.date-chip-grid { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px; }
+.date-chip {
+  padding:5px 11px; border-radius:20px; border:1px solid var(--border-light);
+  background:var(--surface3); color:var(--muted); font-size:12px; font-weight:500;
+  cursor:pointer; transition:all .15s; white-space:nowrap;
+}
+.date-chip:hover { border-color:var(--accent); color:var(--text); background:var(--accent-dim); }
+.date-chip.selected { background:var(--accent); border-color:var(--accent); color:#fff; box-shadow:0 1px 6px rgba(15,145,187,.35); }
+.date-chip.blocked { opacity:.3; cursor:not-allowed; border-style:dashed; background:transparent; }
+.convention-note { font-size:11px; color:var(--muted2); margin-top:5px; }
+
+/* Hide native number spinners globally */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
+input[type=number] { -moz-appearance:textfield; }
+
+/* +/- pill control */
+.num-ctrl {
+  display:inline-flex; align-items:stretch; border-radius:var(--radius-sm);
+  overflow:hidden; border:1px solid var(--border);
+  box-shadow: 0 1px 3px rgba(1,84,128,.08);
+}
+.num-ctrl button {
+  width:32px; background:var(--surface2); border:none; color:var(--muted);
+  font-size:18px; line-height:1; cursor:pointer; padding:0; flex-shrink:0;
+  transition:all .15s;
+}
+.num-ctrl button:hover { background:var(--accent); color:#fff; }
+.num-ctrl input[type=number] {
+  width:58px; text-align:center; border:none;
+  border-left:1px solid var(--border); border-right:1px solid var(--border);
+  background:var(--bg); color:var(--text); font-size:13px; font-weight:500; padding:8px 4px;
+  box-shadow:none;
+}
+.num-ctrl.wide input[type=number] { width:82px; }
+
+/* Stop name chips */
+.stop-chips { display:flex; flex-wrap:wrap; gap:7px; margin-bottom:12px; min-height:36px; }
+.stop-chip {
+  display:flex; align-items:center; gap:7px;
+  padding:6px 10px 6px 13px; border-radius:20px;
+  background:var(--accent-dim); border:1px solid rgba(15,145,187,.3);
+  font-size:13px; font-weight:500; color:var(--text);
+}
+.stop-chip button { background:none; border:none; color:var(--muted2); cursor:pointer; font-size:15px; line-height:1; padding:0; transition:color .15s; }
+.stop-chip button:hover { color:var(--error); }
+.stop-add-row { display:flex; gap:8px; }
+.stop-add-row input { flex:1; }
+
+/* Arrival stepper table */
+.arrival-table { width:100%; border-collapse:collapse; margin-top:8px; }
+.arrival-table td { padding:6px 8px 6px 0; vertical-align:middle; }
+.arrival-table td:first-child { font-size:13px; font-weight:600; width:90px; color:var(--text); }
+
+/* Navigation */
+.nav { display:flex; justify-content:space-between; align-items:center; margin-top:12px; }
+.btn { padding:11px 26px; border-radius:var(--radius-sm); font-size:14px; font-weight:600; cursor:pointer; transition:all .18s; border:none; letter-spacing:.01em; }
+.btn-primary {
+  background: linear-gradient(135deg, #0F91BB, #6EC5EA);
+  color:#fff; box-shadow:0 2px 12px rgba(15,145,187,.4);
+}
+.btn-primary:hover { box-shadow:0 4px 20px rgba(15,145,187,.55); transform:translateY(-1px); }
+.btn-secondary { background:var(--surface2); color:var(--muted); border:1px solid var(--border-light); }
+.btn-secondary:hover { border-color:var(--accent); color:var(--text); }
+.btn:disabled { opacity:.35; cursor:not-allowed; transform:none !important; box-shadow:none !important; }
+.btn-run {
+  background: linear-gradient(135deg, #015480, #0F91BB);
+  color:#fff; font-size:15px; padding:13px 34px;
+  box-shadow:0 2px 12px rgba(1,84,128,.3);
+}
+.btn-run:hover:not(:disabled) { box-shadow:0 4px 20px rgba(1,84,128,.45); transform:translateY(-1px); }
+
+/* Results */
+.results { flex:1; overflow-y:auto; padding:36px 28px 48px; display:none; flex-direction:column; gap:20px; max-width:920px; margin:0 auto; width:100%; }
+.results.visible { display:flex; }
+.results-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; }
+.results-header h2 { font-size:22px; font-weight:700; letter-spacing:-.02em; }
+.btn-restart { font-size:13px; font-weight:500; color:var(--muted); background:none; border:1px solid var(--border-light); border-radius:var(--radius-sm); padding:7px 15px; cursor:pointer; transition:all .15s; }
+.btn-restart:hover { border-color:var(--accent); color:var(--text); }
+
+.stat-row { display:grid; grid-template-columns:repeat(auto-fill,minmax(155px,1fr)); gap:14px; }
+.stat-card {
+  background: linear-gradient(135deg, var(--surface), var(--surface2));
+  border:1px solid var(--border-light); border-radius:var(--radius);
+  padding:20px; position:relative; overflow:hidden;
+}
+.stat-card::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:2px;
+  background: linear-gradient(90deg, var(--accent), transparent);
+}
+.stat-label { font-size:10px; font-weight:600; color:var(--muted2); margin-bottom:8px; text-transform:uppercase; letter-spacing:.07em; }
+.stat-value { font-size:28px; font-weight:800; letter-spacing:-.02em; }
+.stat-value.warn { color:var(--warn); }
+.stat-value.good { color:var(--success); }
+
+.result-section {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius); padding:24px;
+  box-shadow:0 1px 8px rgba(1,84,128,.07);
+}
+.result-section h3 { font-size:13px; font-weight:700; margin-bottom:16px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+.result-table { width:100%; border-collapse:collapse; font-size:13px; }
+.result-table th { text-align:left; color:var(--muted2); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.05em; padding:8px 12px; border-bottom:1px solid var(--border); }
+.result-table td { padding:10px 12px; border-bottom:1px solid var(--border); }
+.result-table tr:last-child td { border-bottom:none; }
+.result-table tbody tr:hover td { background:var(--surface2); }
+
+.download-row { display:flex; gap:12px; flex-wrap:wrap; }
+.dl-btn {
+  display:flex; align-items:center; gap:12px;
+  padding:16px 20px; background:var(--surface2);
+  border:1px solid var(--border-light); border-radius:var(--radius);
+  color:var(--text); text-decoration:none; font-size:13px;
+  transition:all .18s; flex:1; min-width:200px;
+}
+.dl-btn:hover { border-color:var(--accent); background:var(--accent-dim); transform:translateY(-1px); box-shadow:0 4px 12px rgba(1,84,128,.15); }
+.dl-btn .icon { font-size:26px; flex-shrink:0; }
+.dl-btn .info .name { font-weight:700; }
+.dl-btn .info .type { font-size:11px; color:var(--muted2); margin-top:3px; }
+
+.findings { display:flex; flex-direction:column; gap:8px; }
+.finding {
+  font-size:12px; line-height:1.6; padding:11px 14px;
+  background:rgba(255,179,28,.10); border-left:3px solid var(--warn);
+  border-radius:0 var(--radius-sm) var(--radius-sm) 0; color:var(--text);
+}
+.finding.error { border-left-color:var(--error); background:rgba(198,91,65,.08); }
+.finding.good { border-left-color:var(--success); background:var(--success-dim); }
+
+/* Chat analysis */
+.chat-section { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:24px; }
+.chat-section h3 { font-size:13px; font-weight:700; margin-bottom:4px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+.chat-section .chat-sub { font-size:12px; color:var(--muted2); margin-bottom:16px; line-height:1.5; }
+.chat-messages { min-height:80px; max-height:300px; overflow-y:auto; margin-bottom:12px; display:flex; flex-direction:column; gap:10px; }
+.chat-msg { font-size:13px; line-height:1.6; padding:11px 15px; border-radius:var(--radius-sm); }
+.chat-msg.assistant { background:var(--surface2); border:1px solid var(--border); }
+.chat-msg.user { background:var(--accent-dim); border:1px solid rgba(15,145,187,.25); align-self:flex-end; max-width:80%; }
+.chat-input-row { display:flex; gap:8px; }
+.chat-input-row input { flex:1; }
+.chat-input-row button { padding:10px 18px; background:var(--accent); border:none; border-radius:var(--radius-sm); color:#fff; cursor:pointer; font-size:13px; font-weight:600; white-space:nowrap; transition:all .15s; }
+.chat-input-row button:hover:not(:disabled) { background:var(--accent-hover); }
+.chat-input-row button:disabled { opacity:.35; cursor:not-allowed; }
+.no-key-note { font-size:12px; color:var(--muted); line-height:1.5; padding:13px 15px; background:var(--surface2); border-radius:var(--radius-sm); border:1px solid var(--border); }
+.no-key-note code { font-family:monospace; background:rgba(1,84,128,.08); padding:2px 6px; border-radius:4px; }
+
+/* Comparison modal */
+.modal-overlay { display:none; position:fixed; inset:0; background:rgba(1,84,128,.55); z-index:200; align-items:flex-start; justify-content:center; padding:40px 20px; overflow-y:auto; backdrop-filter:blur(4px); }
+.modal-overlay.show { display:flex; }
+.modal { background:var(--surface); border:1px solid var(--border); border-radius:12px; width:100%; max-width:960px; padding:28px; position:relative; }
+.modal h2 { font-size:16px; font-weight:600; margin-bottom:20px; }
+.modal-close { position:absolute; top:16px; right:16px; background:none; border:none; color:var(--muted); font-size:22px; cursor:pointer; line-height:1; }
+.modal-close:hover { color:var(--text); }
+.compare-table { width:100%; border-collapse:collapse; font-size:13px; }
+.compare-table th { text-align:left; padding:8px 12px; border-bottom:2px solid var(--border); color:var(--muted); font-weight:500; font-size:12px; white-space:nowrap; }
+.compare-table th.run-col { text-align:center; }
+.compare-table td { padding:8px 12px; border-bottom:1px solid var(--border); }
+.compare-table td.run-val { text-align:center; font-variant-numeric:tabular-nums; }
+.compare-table tr.section-head td { font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--accent); padding-top:16px; background:none; border-bottom:none; }
+.compare-table .best { color:#4ade80; font-weight:600; }
+.run-label-cell { display:flex; flex-direction:column; align-items:center; gap:4px; }
+.run-label-cell input { background:none; border:none; border-bottom:1px solid var(--border); color:var(--text); font-size:12px; text-align:center; width:120px; padding:2px 4px; }
+.run-label-cell .run-date { font-size:11px; color:var(--muted); }
+.delete-run-btn { background:none; border:none; color:var(--muted); cursor:pointer; font-size:14px; }
+.delete-run-btn:hover { color:var(--error); }
+
+/* Spinner */
+.spinner-overlay { display:none; position:fixed; inset:0; background:rgba(1,84,128,.45); z-index:100; align-items:center; justify-content:center; flex-direction:column; gap:16px; backdrop-filter:blur(4px); }
+.spinner-overlay.show { display:flex; }
+.spinner { width:44px; height:44px; border:3px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+.spinner-label { font-size:14px; color:var(--muted); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0">
+    <!-- Wordmark badge -->
+    <div style="flex-shrink:0;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);border-radius:8px;padding:0 11px;height:36px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;letter-spacing:.5px;color:#fff">DSM</div>
+    <!-- Title block -->
+    <div style="min-width:0">
+      <div style="font-size:15px;font-weight:700;color:#fff;letter-spacing:-.01em;white-space:nowrap">Delegate Schedule Modeler</div>
+      <div style="font-size:11px;color:rgba(255,255,255,.6);letter-spacing:.03em;margin-top:1px">Convention logistics planning tool</div>
+    </div>
+  </div>
+  <div class="header-actions">
+    <button class="btn-sm" onclick="saveConfig()" title="Save configuration to JSON">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-1px;margin-right:5px"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save
+    </button>
+    <button class="btn-sm" onclick="document.getElementById('load-input').click()" title="Load a saved configuration">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-1px;margin-right:5px"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>Load
+    </button>
+    <input type="file" id="load-input" accept=".json" style="display:none" onchange="loadConfig(event)">
+  </div>
+</header>
+
+<div class="app">
+
+<!-- Wizard -->
+<div class="wizard" id="wizard">
+  <!-- Progress bar -->
+  <div class="progress" id="progress"></div>
+
+  <!-- Stage container -->
+  <div id="stage-container"></div>
+
+  <!-- Navigation -->
+  <div class="nav">
+    <button class="btn btn-secondary" id="btn-back" onclick="prevStage()">← Back</button>
+    <button class="btn btn-primary" id="btn-next" onclick="nextStage()">Continue →</button>
+  </div>
+</div>
+
+<!-- Results -->
+<div class="results" id="results">
+  <div class="results-header">
+    <h2>✅ Pipeline Complete</h2>
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-secondary" onclick="goBackFromResults()">← Back to wizard</button>
+      <button class="btn-restart" onclick="restart()">Start over</button>
+    </div>
+  </div>
+
+  <div class="stat-row" id="stat-row"></div>
+
+  <div class="result-section">
+    <h3>Activity Assignment</h3>
+    <table class="result-table" id="act-table">
+      <thead><tr><th>Activity</th><th>Assigned</th><th>Rate</th><th>Not Scheduled</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="result-section">
+    <h3>Bus Trip Summary by Stop</h3>
+    <table class="result-table" id="stop-table">
+      <thead><tr><th>Stop</th><th>Total Trips</th><th>Under Min</th><th>Total Passengers</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="result-section" id="findings-section" style="display:none">
+    <h3>Warnings & Findings</h3>
+    <div class="findings" id="findings-list"></div>
+  </div>
+
+  <div class="result-section">
+    <h3>Downloads</h3>
+    <div class="download-row">
+      <a class="dl-btn" id="dl-excel" href="#" download>
+        <span class="icon">📊</span>
+        <div class="info"><div class="name">Excel Workbook</div><div class="type">8 sheets · data + formulas</div></div>
+      </a>
+      <a class="dl-btn" id="dl-report" href="#" download>
+        <span class="icon">📄</span>
+        <div class="info"><div class="name">Word Report</div><div class="type">Leadership narrative + tables</div></div>
+      </a>
+    </div>
+  </div>
+
+  <div class="result-section">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <h3 style="margin:0">Run History</h3>
+      <button class="btn-sm" onclick="showCompare()">📊 Compare runs</button>
+    </div>
+    <div id="run-history-list" style="margin-top:12px;font-size:13px;color:var(--muted)">No saved runs yet.</div>
+  </div>
+
+  <div class="chat-section">
+    <h3>Analyze with Claude</h3>
+    <div class="chat-sub">Ask questions about the results — interpret non-attendance patterns, bus efficiency, scheduling trade-offs.</div>
+    <div id="chat-area"></div>
+  </div>
+</div>
+
+</div><!-- .app -->
+
+<!-- Compare modal -->
+<div class="modal-overlay" id="compare-modal" onclick="if(event.target===this)closeCompare()">
+  <div class="modal">
+    <button class="modal-close" onclick="closeCompare()">×</button>
+    <h2>Run Comparison</h2>
+    <div id="compare-content"></div>
+  </div>
+</div>
+
+<!-- Spinner -->
+<div class="spinner-overlay" id="spinner">
+  <div class="spinner"></div>
+  <div class="spinner-label" id="spinner-label">Running pipeline…</div>
+</div>
+
+<script>
+// ============================================================
+// State
+// ============================================================
+let currentStage = 0;
+let pipelineResult = null;
+let chatHistory = [];
+let chatStreaming = false;
+
+const STAGES = [
+  { id: 'population', label: 'Population' },
+  { id: 'hotels',     label: 'Hotels' },
+  { id: 'stops',      label: 'Bus Stops' },
+  { id: 'activities', label: 'Activities' },
+  { id: 'scheduling', label: 'Scheduling' },
+  { id: 'transport',  label: 'Transport' },
+  { id: 'review',     label: 'Review' },
+];
+
+// Collected data
+const data = {
+  population: {},
+  hotels: [],          // [{name, capacity}]
+  hotelToStop: {},     // {hotel: stop}
+  stopNames: [],
+  pairingRules: [],    // [[a,b],...]
+  requiredActivities: [],
+  optionalActivities: [],
+  smpw: { hotels: [], dates: [] },
+  preferenceDepth: { threePlus: 40, twoThree: 30, oneTwo: 20, one: 10 },
+  orderIsPriority: true,
+  busMin: 40,
+  busMax: 50,
+  topupThreshold: 50,
+  seed: 42,
+};
+
+// ============================================================
+// Progress bar
+// ============================================================
+function renderProgress() {
+  const el = document.getElementById('progress');
+  el.innerHTML = STAGES.map((s, i) => {
+    const cls = i < currentStage ? 'done' : i === currentStage ? 'active' : '';
+    const dot = i < currentStage ? '✓' : i + 1;
+    const line = i < STAGES.length - 1 ? `<div class="step-line"></div>` : '';
+    return `<div class="step ${cls}"><div class="step-dot">${dot}</div><div class="step-label">${s.label}</div></div>${line}`;
+  }).join('');
+}
+
+// ============================================================
+// Stage renderers
+// ============================================================
+function renderStage(idx) {
+  const container = document.getElementById('stage-container');
+  const renderers = [
+    renderPopulation, renderHotels, renderStops,
+    renderActivities, renderScheduling, renderTransport, renderReview
+  ];
+  container.innerHTML = '';
+  renderers[idx]();
+  document.getElementById('btn-back').style.visibility = idx === 0 ? 'hidden' : 'visible';
+  const isLast = idx === STAGES.length - 1;
+  const nextBtn = document.getElementById('btn-next');
+  nextBtn.textContent = isLast ? '🚀 Run Pipeline' : 'Continue →';
+  nextBtn.className = isLast ? 'btn btn-run' : 'btn btn-primary';
+}
+
+// ---- Stage 0: Population ----
+// Default group-size distribution
+const GSD_DEFAULTS = [
+  {size:'1',pct:'4'},{size:'2',pct:'47'},{size:'3',pct:'11'},
+  {size:'4',pct:'20'},{size:'5',pct:'5'},{size:'6',pct:'7'},
+  {size:'7',pct:'3'},{size:'8',pct:'3'},
+];
+
+// Arrival day-of-week defaults: Sat/Sun/Mon/Tue/Wed
+const ARRIVAL_DOW_DEFAULTS = { D1:5, D2:45, D3:20, D4:20, D5:10 };
+
+// Default occupancy curve: % of peak on each of the 12 window nights
+const OCC_DEFAULTS = [5, 30, 70, 85, 95, 100, 100, 100, 100, 50, 30, 10];
+
+function renderPopulation() {
+  const p = data.population;
+  document.getElementById('stage-container').innerHTML = `
+  <div class="stage-card">
+    <div class="stage-title">Stage 1 — Population</div>
+    <div class="stage-desc">Tell us about your delegates and how long they'll stay.</div>
+
+    <!-- Section 1: Population basics -->
+    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:18px 20px;margin-bottom:18px;background:var(--surface2)">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px">Population</div>
+      <div class="row-3">
+        <div class="field" style="margin:0">
+          <label>Population type</label>
+          <select id="pop-type" onchange="togglePopType()">
+            <option value="delegates" ${p.type!=='groups'?'selected':''}>Total delegates</option>
+            <option value="groups" ${p.type==='groups'?'selected':''}>Total groups</option>
+          </select>
+        </div>
+        <div class="field" style="margin:0">
+          <label id="pop-count-label">Count</label>
+          ${numCtrl(p.count||'', {id:'pop-count', min:1, ph:'e.g. 5000', wide:true})}
+        </div>
+        <div class="field" style="margin:0">
+          <label>First check-in date <span style="color:var(--muted);font-weight:400">(window start)</span></label>
+          <input type="date" id="win-start" value="${p.windowStart||''}">
+        </div>
+      </div>
+      <div class="hint" style="margin-top:10px;margin-bottom:0">Window runs 12 days from check-in. Convention core nights are nights 7–9.</div>
+    </div>
+
+    <!-- Section 2 & 3: Arrivals + Group Size side by side, each in own box -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
+      <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:18px 20px;background:var(--surface2)">
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px">Arrivals</div>
+        <div class="field" style="margin:0">
+          <label>Arrival Day <span style="color:var(--muted);font-weight:400">(must sum to 100%)</span></label>
+          <table class="arrival-table">
+            <tbody id="arrival-body"></tbody>
+          </table>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
+            <span class="dist-total" id="arrival-total"></span>
+            <button class="add-row-btn" onclick="normalizeArrival()" style="margin:0">Normalize to 100%</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:18px 20px;background:var(--surface2)">
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px">Group Size</div>
+        <div class="field" style="margin:0">
+          <label>Distribution <span style="color:var(--muted);font-weight:400">(must sum to 100%)</span></label>
+          <table class="dist-table">
+            <thead><tr><th>Delegates/group</th><th>%</th><th></th></tr></thead>
+            <tbody id="gsd-body"></tbody>
+          </table>
+          <button class="add-row-btn" onclick="addGSDRow()">+ Add size</button>
+          <div class="dist-total" id="gsd-total"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section 3: Occupancy curve -->
+    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:18px 20px;background:var(--surface2)">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Occupancy Curve</div>
+      <div class="hint" style="margin-bottom:12px">% of peak occupancy per night. 100% = busiest night. Used to derive stay-length distribution.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 24px" id="occ-grid"></div>
+    </div>
+
+  </div>`;
+
+  // Group size rows
+  const gsdRows = p.gsd && p.gsd.length ? p.gsd : GSD_DEFAULTS;
+  gsdRows.forEach(r => addGSDRow(r.size, r.pct));
+
+  // Occupancy — 12 nights laid out in a 2-column grid
+  const occVals = p.occ && p.occ.length === 12 ? p.occ : OCC_DEFAULTS;
+  const occGrid = document.getElementById('occ-grid');
+  occVals.forEach((val, i) => {
+    const cell = document.createElement('div');
+    cell.style.cssText = 'display:flex;align-items:center;gap:8px;padding:3px 0';
+    cell.innerHTML = `<span style="font-size:12px;color:var(--muted);width:52px;flex-shrink:0">Night ${i+1}</span>
+      ${numCtrl(val, {min:0, max:100, cls:'occ-input', on:'syncOccupancy()'})}`;
+    occGrid.appendChild(cell);
+  });
+
+  // Arrival table
+  const arrSaved = p.arrival || ARRIVAL_DOW_DEFAULTS;
+  renderArrivalTable(arrSaved);
+
+  updateDistTotal('gsd');
+  updateArrivalTotal();
+}
+
+function renderArrivalTable(vals) {
+  const tbody = document.getElementById('arrival-body');
+  tbody.innerHTML = '';
+  const days = [
+    { key:'D1', label:'Day 1' },
+    { key:'D2', label:'Day 2' },
+    { key:'D3', label:'Day 3' },
+    { key:'D4', label:'Day 4' },
+    { key:'D5', label:'Day 5' },
+  ];
+  days.forEach(({ key, label }) => {
+    const pct = vals[key] !== undefined ? vals[key] : ARRIVAL_DOW_DEFAULTS[key];
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${label}</td>
+      <td style="display:flex;align-items:center;gap:6px">
+        <div class="num-ctrl">
+          <button type="button" onclick="stepArrival('${key}',-1)">−</button>
+          <input type="number" min="0" max="100" step="1" value="${pct}"
+            class="arrival-pct" data-day="${key}" oninput="updateArrivalTotal()">
+          <button type="button" onclick="stepArrival('${key}',1)">+</button>
+        </div>
+        <span style="font-size:12px;color:var(--muted)">%</span>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function stepNum(btn, delta) {
+  const input = btn.parentElement.querySelector('input[type=number]');
+  if (!input) return;
+  const step = parseFloat(input.step) || 1;
+  const min = input.min !== '' ? parseFloat(input.min) : -Infinity;
+  const max = input.max !== '' ? parseFloat(input.max) : Infinity;
+  input.value = Math.min(max, Math.max(min, (parseFloat(input.value) || 0) + delta * step));
+  input.dispatchEvent(new Event('input'));
+}
+
+function numCtrl(value, opts={}) {
+  const id    = opts.id    ? `id="${opts.id}"`       : '';
+  const min   = opts.min   != null ? `min="${opts.min}"` : '';
+  const max   = opts.max   != null ? `max="${opts.max}"` : '';
+  const step  = opts.step  != null ? `step="${opts.step}"` : 'step="1"';
+  const cls   = opts.cls   ? `class="${opts.cls}"`   : '';
+  const on    = opts.on    ? `oninput="${opts.on}"`   : '';
+  const ph    = opts.ph    ? `placeholder="${opts.ph}"` : '';
+  const val   = value != null && value !== '' ? `value="${value}"` : '';
+  const wrap  = opts.wide  ? 'num-ctrl wide' : 'num-ctrl';
+  return `<div class="${wrap}">
+    <button type="button" tabindex="-1" onclick="stepNum(this,-1)">−</button>
+    <input type="number" ${id} ${min} ${max} ${step} ${cls} ${on} ${ph} ${val}>
+    <button type="button" tabindex="-1" onclick="stepNum(this,1)">+</button>
+  </div>`;
+}
+
+function stepArrival(day, delta) {
+  const input = document.querySelector(`.arrival-pct[data-day="${day}"]`);
+  if (!input) return;
+  const newVal = Math.max(0, Math.min(100, parseInt(input.value || 0) + delta));
+  input.value = newVal;
+  updateArrivalTotal();
+}
+
+function updateArrivalTotal() {
+  const total = [...document.querySelectorAll('.arrival-pct')]
+    .reduce((s, el) => s + (parseInt(el.value) || 0), 0);
+  const el = document.getElementById('arrival-total');
+  if (!el) return;
+  const diff = total - 100;
+  el.className = 'dist-total ' + (Math.abs(diff) < 1 ? 'ok' : 'bad');
+  el.textContent = Math.abs(diff) < 1 ? '✓ Total: 100%'
+    : `Total: ${total}% (${diff > 0 ? '+' : ''}${diff}% from 100%)`;
+}
+
+function normalizeArrival() {
+  const inputs = [...document.querySelectorAll('.arrival-pct')];
+  const total = inputs.reduce((s, el) => s + (parseInt(el.value) || 0), 0);
+  if (total === 0) return;
+  const scaled = inputs.map(el => (parseInt(el.value) || 0) / total * 100);
+  const floors = scaled.map(Math.floor);
+  const remainders = scaled.map((v, i) => ({ r: v - floors[i], i }))
+    .sort((a, b) => b.r - a.r);
+  const deficit = 100 - floors.reduce((s, v) => s + v, 0);
+  for (let k = 0; k < deficit; k++) floors[remainders[k].i]++;
+  inputs.forEach((el, i) => { el.value = floors[i]; });
+  updateArrivalTotal();
+}
+
+function onWindowStartChange() {
+  // No auto-calculation needed in UI — window end = start + 12 is handled in savePopulation
+}
+
+function syncOccupancy() {
+  // Nothing to total — occupancy values are independent % of peak, not a distribution
+}
+
+function togglePopType() {
+  const v = document.getElementById('pop-type').value;
+  document.getElementById('pop-count-label').textContent = v === 'groups' ? 'Total groups' : 'Total delegates';
+}
+
+
+function addGSDRow(size='', pct='') {
+  const tbody = document.getElementById('gsd-body');
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td>${numCtrl(size, {min:1, ph:'e.g. 2', on:"updateDistTotal('gsd')"})}</td>
+    <td>${numCtrl(pct, {min:0, max:100, step:1, ph:'0', on:"updateDistTotal('gsd')"})}</td>
+    <td><button class="remove-btn" onclick="this.closest('tr').remove();updateDistTotal('gsd')">×</button></td>`;
+  tbody.appendChild(tr);
+}
+
+
+
+function updateDistTotal(id) {
+  const tbody = document.getElementById(`${id}-body`);
+  if (!tbody) return;
+  const inputs = [...tbody.querySelectorAll('td:nth-child(2) input')];
+  const total = inputs.reduce((s, i) => s + (parseFloat(i.value) || 0), 0);
+  const el = document.getElementById(`${id}-total`);
+  const diff = Math.abs(total - 100);
+  el.className = 'dist-total ' + (diff < 0.01 ? 'ok' : 'bad');
+  el.textContent = diff < 0.01 ? `✓ Total: 100%` : `Total: ${total.toFixed(1)}% (${total < 100 ? total-100 : '+' + (total-100).toFixed(1)}% from 100%)`;
+}
+
+function collectDistRows(id, keyField) {
+  const tbody = document.getElementById(`${id}-body`);
+  const rows = [...tbody.querySelectorAll('tr')];
+  return rows.map(tr => {
+    const inputs = tr.querySelectorAll('input');
+    return { [keyField]: inputs[0].value, pct: parseFloat(inputs[1].value) || 0 };
+  }).filter(r => r[keyField]);
+}
+
+function savePopulation() {
+  const type = document.getElementById('pop-type').value;
+  const count = parseInt(document.getElementById('pop-count').value) || 0;
+  const gsd = collectDistRows('gsd', 'size');
+  const occ = [...document.querySelectorAll('.occ-input')].map(i => parseFloat(i.value) || 0);
+
+  const arrival = {};
+  document.querySelectorAll('.arrival-pct').forEach(el => {
+    arrival[el.dataset.day] = parseInt(el.value);
+  });
+
+  const windowStart = document.getElementById('win-start').value;
+  let windowEnd = '';
+  if (windowStart) {
+    const d = new Date(windowStart + 'T00:00:00');
+    d.setDate(d.getDate() + 12);
+    windowEnd = d.toISOString().split('T')[0];
+  }
+
+  data.population = { type, count, gsd, occ, arrival, windowStart, windowEnd };
+}
+
+function validatePopulation() {
+  const p = data.population;
+  if (!p.count || p.count < 1) return 'Enter a valid delegate or group count.';
+  if (p.gsd.length < 1) return 'Add at least one group size.';
+  const gsdSum = p.gsd.reduce((s,r) => s + r.pct, 0);
+  if (Math.abs(gsdSum - 100) > 5) return `Group size percentages sum to ${gsdSum.toFixed(1)}% — should total 100%.`;
+  if (!p.windowStart) return 'Enter the first possible check-in date.';
+  const arrTotal = Object.values(p.arrival||{}).reduce((s,v)=>s+v,0);
+  if (Math.abs(arrTotal - 100) > 2) return `Arrival day-of-week percentages sum to ${arrTotal}% — normalize to 100% first.`;
+  return null;
+}
+
+// ---- Stage 1: Hotels ----
+function renderHotels() {
+  document.getElementById('stage-container').innerHTML = `
+  <div class="stage-card">
+    <div class="stage-title">Stage 2 — Hotels</div>
+    <div class="stage-desc">List every hotel and its room capacity. Names must match exactly what you'll use in the bus stop stage.</div>
+    <div id="hotel-list"></div>
+    <button class="add-activity-btn" onclick="addHotelRow()">+ Add hotel</button>
+  </div>`;
+
+  const list = document.getElementById('hotel-list');
+  const rows = data.hotels.length ? data.hotels : [{name:'',capacity:''}];
+  rows.forEach(h => addHotelRow(h.name, h.capacity));
+}
+
+function addHotelRow(name='', capacity='') {
+  const list = document.getElementById('hotel-list');
+  const div = document.createElement('div');
+  div.className = 'activity-card';
+  div.innerHTML = `
+    <button class="remove-act" onclick="this.parentElement.remove()">×</button>
+    <div class="row">
+      <div class="field" style="margin:0"><label>Hotel name</label><input type="text" class="hotel-name" value="${esc(name)}" placeholder="e.g. Hilton Garden Inn DTC"></div>
+      <div class="field" style="margin:0"><label>Room capacity</label>${numCtrl(capacity, {cls:'hotel-cap', min:1, ph:'e.g. 250', wide:true})}</div>
+    </div>`;
+  list.appendChild(div);
+}
+
+function saveHotels() {
+  const cards = document.querySelectorAll('#hotel-list .activity-card');
+  data.hotels = [...cards].map(c => ({
+    name: c.querySelector('.hotel-name').value.trim(),
+    capacity: parseInt(c.querySelector('.hotel-cap').value) || 0,
+  })).filter(h => h.name);
+}
+
+function validateHotels() {
+  if (data.hotels.length < 1) return 'Add at least one hotel.';
+  if (data.hotels.some(h => !h.capacity)) return 'All hotels need a room capacity.';
+  return null;
+}
+
+// ---- Stage 2: Bus Stops ----
+function renderStops() {
+  const hotelNames = data.hotels.map(h => h.name);
+  document.getElementById('stage-container').innerHTML = `
+  <div class="stage-card">
+    <div class="stage-title">Stage 3 — Bus Stops</div>
+    <div class="stage-desc">Define your bus stops, assign each hotel to one, then optionally pair stops that can share buses when under-filled.</div>
+
+    <div class="field">
+      <label>Bus stops</label>
+      <div class="stop-chips" id="stop-chips"></div>
+      <div class="stop-add-row">
+        <input type="text" id="stop-name-input" placeholder="Type a stop name and press Add">
+        <button class="add-row-btn" style="white-space:nowrap" onclick="addStopChip()">+ Add stop</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Hotel → Stop assignment</label>
+      <table class="dist-table">
+        <thead><tr><th>Hotel</th><th>Bus stop</th></tr></thead>
+        <tbody id="hotel-stop-body">
+          ${hotelNames.map(h => `<tr>
+            <td style="padding:6px 12px 6px 0;font-size:13px">${esc(h)}</td>
+            <td><select class="stop-assign" data-hotel="${esc(h)}">
+              <option value="">— select stop —</option>
+            </select></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="field">
+      <label>Multi-stop pairing rules <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+      <div id="pairing-list"></div>
+      <button class="add-row-btn" onclick="addPairingRow()">+ Add pairing rule</button>
+      <div class="hint">Paired stops can share buses when one is under-filled.</div>
+    </div>
+  </div>`;
+
+  // Restore saved stops as chips
+  (data.stopNames || []).forEach(s => _addStopChip(s));
+  // Enter key on input
+  document.getElementById('stop-name-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); addStopChip(); }
+  });
+  // Restore pairing rules
+  (data.pairingRules || []).forEach(r => addPairingRow(r[0], r[1]));
+}
+
+function _getStopNames() {
+  return [...document.querySelectorAll('.stop-chip')].map(c => c.dataset.stop);
+}
+
+function _stopOptions(selected='') {
+  return _getStopNames().map(s =>
+    `<option value="${esc(s)}" ${s === selected ? 'selected' : ''}>${esc(s)}</option>`
+  ).join('');
+}
+
+function _refreshStopDropdowns() {
+  // Hotel → Stop selects
+  document.querySelectorAll('.stop-assign').forEach(sel => {
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">— select stop —</option>' + _stopOptions(cur);
+  });
+  // Pairing rule selects
+  document.querySelectorAll('.pair-a,.pair-b').forEach(sel => {
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">— select stop —</option>' + _stopOptions(cur);
+  });
+}
+
+function _addStopChip(name) {
+  const chips = document.getElementById('stop-chips');
+  if (!chips) return;
+  if ([...chips.querySelectorAll('.stop-chip')].some(c => c.dataset.stop === name)) return;
+  const chip = document.createElement('div');
+  chip.className = 'stop-chip';
+  chip.dataset.stop = name;
+  chip.innerHTML = `<span>${esc(name)}</span><button onclick="removeStopChip(this)" title="Remove">×</button>`;
+  chips.appendChild(chip);
+  _refreshStopDropdowns();
+}
+
+function addStopChip() {
+  const inp = document.getElementById('stop-name-input');
+  const name = inp.value.trim();
+  if (!name) return;
+  _addStopChip(name);
+  inp.value = '';
+  inp.focus();
+}
+
+function removeStopChip(btn) {
+  btn.closest('.stop-chip').remove();
+  _refreshStopDropdowns();
+}
+
+function addPairingRow(a='', b='') {
+  const list = document.getElementById('pairing-list');
+  const div = document.createElement('div');
+  div.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:8px';
+  div.innerHTML = `
+    <select class="pair-a" style="flex:1"><option value="">— select stop —</option>${_stopOptions(a)}</select>
+    <span style="color:var(--muted);font-size:13px;white-space:nowrap">can share buses with</span>
+    <select class="pair-b" style="flex:1"><option value="">— select stop —</option>${_stopOptions(b)}</select>
+    <button class="remove-btn" onclick="this.parentElement.remove()">×</button>`;
+  list.appendChild(div);
+}
+
+function saveStops() {
+  data.stopNames = _getStopNames();
+  data.hotelToStop = {};
+  document.querySelectorAll('.stop-assign').forEach(sel => {
+    const hotel = sel.dataset.hotel;
+    const stop = sel.value;
+    if (hotel && stop) data.hotelToStop[hotel] = stop;
+  });
+  data.pairingRules = [...document.querySelectorAll('#pairing-list > div')].map(div => {
+    const a = div.querySelector('.pair-a').value;
+    const b = div.querySelector('.pair-b').value;
+    return a && b ? [a, b] : null;
+  }).filter(Boolean);
+}
+
+function validateStops() {
+  if (data.stopNames.length < 1) return 'Add at least one stop name.';
+  // Check hotel-to-stop assignments
+  const unassigned = data.hotels.filter(h => !data.hotelToStop[h.name]);
+  if (unassigned.length) {
+    const names = unassigned.map(h => `"${h.name}"`).join(', ');
+    return `These hotels have no stop assigned: ${names}`;
+  }
+  // Flag stop names that don't match
+  const stopSet = new Set(data.stopNames);
+  const bad = Object.entries(data.hotelToStop).filter(([,s]) => !stopSet.has(s));
+  if (bad.length) {
+    return `Stop name mismatch for: ${bad.map(([h,s])=>`"${h}" → "${s}" (not in stop list)`).join('; ')}`;
+  }
+  return null;
+}
+
+// ---- Stage 3: Activities ----
+
+// Pre-loaded required activities (locked names/config, dates/capacity editable)
+const REQ_DEFAULTS = [
+  { name:'Field Service 1', priority:1, mutex:null,               prerequisites:[] },
+  { name:'Field Service 2', priority:2, mutex:null,               prerequisites:[] },
+  { name:'EG AM',           priority:3, mutex:'Evening Gathering', prerequisites:['Field Service 1','Field Service 2'] },
+  { name:'EG PM',           priority:3, mutex:'Evening Gathering', prerequisites:['Field Service 1','Field Service 2'] },
+];
+
+let actCardId = 0;
+
+function renderActivities() {
+  const pd = data.preferenceDepth || { threePlus:40, twoThree:30, oneTwo:20, one:10 };
+  document.getElementById('stage-container').innerHTML = `
+  <div class="stage-card">
+    <div class="stage-title">Stage 4 — Activities</div>
+    <div class="stage-desc">Set available dates and capacity for each activity. Field Service 1 &amp; 2 and Evening Gathering are pre-loaded. Add more as needed.</div>
+
+    <div class="field">
+      <label>Required activities</label>
+      <div id="req-act-list"></div>
+      <button class="add-activity-btn" onclick="addReqActivity()">+ Add required activity</button>
+    </div>
+
+    <div class="field" style="margin-top:24px">
+      <label>Optional activities <span style="color:var(--muted);font-weight:400">(leave blank if none)</span></label>
+      <div id="opt-act-list"></div>
+      <button class="add-activity-btn" onclick="addOptActivity()">+ Add optional activity</button>
+    </div>
+  </div>
+
+  <div class="stage-card">
+    <div class="stage-title" style="font-size:17px">Activity Preference Distribution</div>
+    <div class="stage-desc">Not all groups want to do every optional activity. Set what share of groups will list preferences for how many optional activities. The scheduler will build each group's personal ranked preference list using each activity's popularity, then assign accordingly.</div>
+    <div class="field">
+      <table class="dist-table" style="max-width:480px">
+        <thead><tr><th style="width:60%">Groups who want…</th><th>% of all groups</th></tr></thead>
+        <tbody>
+          <tr><td style="font-size:13px;padding:6px 8px 6px 0">3 or more optional activities</td>
+              <td>${numCtrl(pd.threePlus, {cls:'pd-input', id:'pd-three-plus', min:0, max:100, step:1})}</td></tr>
+          <tr><td style="font-size:13px;padding:6px 8px 6px 0">2 – 3 optional activities</td>
+              <td>${numCtrl(pd.twoThree, {cls:'pd-input', id:'pd-two-three', min:0, max:100, step:1})}</td></tr>
+          <tr><td style="font-size:13px;padding:6px 8px 6px 0">1 – 2 optional activities</td>
+              <td>${numCtrl(pd.oneTwo, {cls:'pd-input', id:'pd-one-two', min:0, max:100, step:1})}</td></tr>
+          <tr><td style="font-size:13px;padding:6px 8px 6px 0">Exactly 1 optional activity</td>
+              <td>${numCtrl(pd.one, {cls:'pd-input', id:'pd-one', min:0, max:100, step:1})}</td></tr>
+        </tbody>
+      </table>
+      <div class="dist-total" id="pd-total" style="margin-top:8px"></div>
+    </div>
+  </div>
+
+  <div class="stage-card" style="border-color:#0F91BB;background:linear-gradient(135deg,#e4f4fa,#cceaf5)">
+    <div class="stage-title" style="font-size:17px">SMPW <span style="font-size:13px;font-weight:400;color:var(--muted);margin-left:8px">Service &amp; Ministry Partnership Work</span></div>
+    <div class="stage-desc">SMPW is a sub-activity under Field Service. Groups assigned to SMPW fulfill either their FS1 or FS2 requirement and do not ride a bus. Use it to improve bus efficiency by diverting groups that would create under-minimum trips.</div>
+
+    <div class="field">
+      <label>Eligible hotels <span style="color:var(--muted);font-weight:400">(only groups from these hotels can be assigned SMPW)</span></label>
+      <div id="smpw-hotel-list" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px"></div>
+    </div>
+
+    <div class="field">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <label style="margin:0">SMPW dates &amp; delegate caps</label>
+        <button class="add-row-btn" style="margin:0;padding:5px 12px;border:1px solid var(--accent);border-radius:var(--radius-sm);color:var(--accent);background:white;font-size:12px;cursor:pointer" onclick="syncSMPWDates()">↻ Sync from FS1 / FS2 dates</button>
+      </div>
+      <table class="dist-table">
+        <thead><tr><th>Date</th><th>Max delegates that day</th><th></th></tr></thead>
+        <tbody id="smpw-date-body"></tbody>
+      </table>
+      <button class="add-row-btn" onclick="addSMPWDateRow()">+ Add date manually</button>
+      <div class="hint">Dates are auto-filled from your FS1 &amp; FS2 selections above. Set each day's delegate cap. Groups are chosen to minimise under-minimum bus trips.</div>
+    </div>
+  </div>`;
+
+  // Load saved or defaults
+  const reqs = data.requiredActivities.length ? data.requiredActivities : REQ_DEFAULTS.map(d=>({...d,dates:[],capacity:''}));
+  reqs.forEach(a => addReqActivity(a));
+  data.optionalActivities.forEach(a => addOptActivity(a));
+
+  // SMPW hotel checkboxes
+  renderSMPWHotels();
+
+  // SMPW dates — autofill from FS if none saved yet
+  if (data.smpw?.dates?.length) {
+    data.smpw.dates.forEach(d => addSMPWDateRow(d.date, d.cap));
+  } else {
+    syncSMPWDates();
+  }
+
+  // Wire up preference depth total updater
+  document.querySelectorAll('.pd-input').forEach(inp =>
+    inp.addEventListener('input', updatePrefDepthTotal)
+  );
+  updatePrefDepthTotal();
+}
+
+function syncSMPWDates() {
+  // Collect FS1 + FS2 dates from DOM (currently rendered cards) OR from saved data
+  const fsDates = new Set();
+
+  // From DOM (most current)
+  document.querySelectorAll('#req-act-list .activity-card').forEach(card => {
+    const name = card.querySelector('.act-name')?.value?.trim();
+    if (name === 'Field Service 1' || name === 'Field Service 2') {
+      const gridId = card.querySelector('[id^="dates-"]')?.id;
+      if (gridId) collectDatesFromGrid(gridId).forEach(d => fsDates.add(d));
+    }
+  });
+
+  // Fallback: from saved data
+  if (fsDates.size === 0) {
+    (data.requiredActivities || []).filter(a =>
+      a.name === 'Field Service 1' || a.name === 'Field Service 2'
+    ).forEach(a => (a.dates || []).forEach(d => fsDates.add(d)));
+  }
+
+  const tbody = document.getElementById('smpw-date-body');
+  if (!tbody) return;
+
+  // Preserve existing caps keyed by date
+  const existingCaps = {};
+  tbody.querySelectorAll('tr').forEach(tr => {
+    const d = tr.querySelector('.smpw-date-input')?.value;
+    const c = tr.querySelector('.smpw-cap')?.value;
+    if (d) existingCaps[d] = c || '';
+  });
+  tbody.innerHTML = '';
+
+  const sorted = [...fsDates].sort();
+  if (sorted.length === 0) {
+    const row = document.createElement('tr');
+    row.innerHTML = `<td colspan="3" style="font-size:12px;color:var(--muted);padding:8px 0">No FS1/FS2 dates selected above yet.</td>`;
+    tbody.appendChild(row);
+    return;
+  }
+  sorted.forEach(d => addSMPWDateRow(d, existingCaps[d] ?? ''));
+}
+
+function updatePrefDepthTotal() {
+  const inputs = [...document.querySelectorAll('.pd-input')];
+  const total = inputs.reduce((s, i) => s + (parseInt(i.value) || 0), 0);
+  const el = document.getElementById('pd-total');
+  if (!el) return;
+  el.textContent = `Total: ${total}%`;
+  el.className = 'dist-total ' + (total === 100 ? 'ok' : 'bad');
+}
+
+function addReqActivity(a={}) {
+  const id = actCardId++;
+  const isMutex = !!a.mutex;
+  const isLocked = REQ_DEFAULTS.some(d => d.name === a.name); // can't rename pre-loaded
+  const list = document.getElementById('req-act-list');
+
+  // EG AM/PM get a visual grouping header
+  if (a.name === 'EG AM') {
+    const header = document.createElement('div');
+    header.id = 'eg-group-header';
+    header.style.cssText = 'margin:8px 0 4px;font-size:11px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.06em';
+    header.textContent = '⟶ Evening Gathering (EG AM & EG PM are the same event — groups get one or the other, never both)';
+    list.appendChild(header);
+  }
+
+  const div = document.createElement('div');
+  div.className = 'activity-card' + (isMutex ? ' mutex-card' : '');
+  div.dataset.actName = a.name || '';
+  div.dataset.mutex = a.mutex || '';
+  div.dataset.prerequisites = JSON.stringify(a.prerequisites || []);
+  div.dataset.priority = a.priority || 1;
+  div.innerHTML = `
+    ${!isLocked ? `<button class="remove-act" onclick="this.parentElement.remove()">×</button>` : ''}
+    <div class="row" style="margin-bottom:12px">
+      <div class="field" style="margin:0">
+        <label>Activity name</label>
+        <input type="text" class="act-name" value="${esc(a.name||'')}" placeholder="Activity name" ${isLocked?'readonly style="opacity:.6"':''}>
+      </div>
+      <div class="field" style="margin:0">
+        <label>Daily capacity</label>
+        ${numCtrl(a.capacity||'', {cls:'act-cap', min:1, ph:'∞'})}
+      </div>
+    </div>
+    <div class="field" style="margin:0">
+      <label>Available dates <span style="color:var(--muted);font-weight:400">(click to select — greyed dates are convention days)</span></label>
+      <div id="dates-${id}"></div>
+    </div>`;
+
+  list.appendChild(div);
+  renderDateGrid(`dates-${id}`, a.dates || []);
+}
+
+function addOptActivity(a={}) {
+  const id = actCardId++;
+  const list = document.getElementById('opt-act-list');
+  const div = document.createElement('div');
+  div.className = 'activity-card';
+  div.innerHTML = `
+    <button class="remove-act" onclick="this.parentElement.remove()">×</button>
+    <div class="row" style="margin-bottom:12px">
+      <div class="field" style="margin:0"><label>Activity name</label><input type="text" class="opt-name" value="${esc(a.name||'')}" placeholder="e.g. Museum Tour"></div>
+    </div>
+    <div style="background:#fff;border:2px solid #C65B41;border-left:5px solid #C65B41;border-radius:var(--radius-sm);padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:20px">
+      <div style="flex:1">
+        <div style="font-size:12px;font-weight:700;color:#C65B41;margin-bottom:3px">1st Choice Popularity</div>
+        <div style="font-size:11px;color:#5a3020;line-height:1.5">% of eligible groups who rank this as their <strong style="color:#C65B41">top</strong> optional activity. Higher = more in-demand; the scheduler prioritises accordingly.</div>
+      </div>
+      <div style="flex-shrink:0;text-align:center">
+        ${numCtrl(a.wantPct!=null?Math.round(a.wantPct*100):30, {cls:'opt-want', min:0, max:100})}
+        <div style="font-size:11px;font-weight:600;color:#DE6E4A;margin-top:3px">%</div>
+      </div>
+    </div>
+    <div class="row" style="margin-bottom:12px">
+      <div class="field" style="margin:0">
+        <label>Daily capacity</label>
+        ${numCtrl(a.capacity||'', {cls:'opt-cap', min:1, ph:'∞'})}
+      </div>
+      <div class="field" style="margin:0">
+        <label>Requires Evening Gathering first?</label>
+        <select class="opt-prereq-eg">
+          <option value="yes" ${a.prerequisite_group==='Evening Gathering'||(!a.prerequisite&&!a.prerequisite_group)?'selected':''}>Yes — group must have EG AM or EG PM first</option>
+          <option value="no" ${a.prerequisite_group!=='Evening Gathering'&&(a.prerequisite||a.prerequisite_group==='none')?'selected':''}>No prerequisite</option>
+        </select>
+      </div>
+    </div>
+    <div class="field" style="margin:0">
+      <label>Available dates <span style="color:var(--muted);font-weight:400">(click to select — greyed dates are convention days)</span></label>
+      <div id="opt-dates-${id}"></div>
+    </div>`;
+  list.appendChild(div);
+  renderDateGrid(`opt-dates-${id}`, a.dates || []);
+}
+
+// Blocked window nights (0-indexed): days 7, 8, 9 = indices 6, 7, 8
+const BLOCKED_NIGHT_INDICES = new Set([6, 7, 8]);
+const DAY_ABBR = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+function renderDateGrid(containerId, selectedDates = []) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  const windowStart = data.population && data.population.windowStart;
+  if (!windowStart) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--warn)">⚠ Enter the check-in date in Stage 1 first.</div>';
+    return;
+  }
+  const base = new Date(windowStart + 'T00:00:00');
+  const selectedSet = new Set(selectedDates);
+
+  const grid = document.createElement('div');
+  grid.className = 'date-chip-grid';
+
+  let blockedLabels = [];
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(base);
+    d.setDate(d.getDate() + i);
+    const dateStr = d.toISOString().split('T')[0];
+    const dayName = DAY_ABBR[d.getDay()];
+    const dayNum = d.getDate();
+    const isBlocked = BLOCKED_NIGHT_INDICES.has(i);
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = `${dayName} ${dayNum}`;
+    btn.dataset.date = dateStr;
+
+    if (isBlocked) {
+      btn.className = 'date-chip blocked';
+      btn.disabled = true;
+      btn.title = 'Convention day — not schedulable';
+      blockedLabels.push(`${dayName} ${dayNum}`);
+    } else {
+      btn.className = 'date-chip' + (selectedSet.has(dateStr) ? ' selected' : '');
+      btn.title = dateStr;
+      btn.onclick = () => btn.classList.toggle('selected');
+    }
+    grid.appendChild(btn);
+  }
+  el.innerHTML = '';
+  el.appendChild(grid);
+
+  if (blockedLabels.length) {
+    const note = document.createElement('div');
+    note.className = 'convention-note';
+    note.textContent = `🚫 Convention days (greyed out, not schedulable): ${blockedLabels.join(', ')}`;
+    el.appendChild(note);
+  }
+}
+
+function collectDatesFromGrid(containerId) {
+  const el = document.getElementById(containerId);
+  if (!el) return [];
+  return [...el.querySelectorAll('.date-chip.selected')].map(b => b.dataset.date);
+}
+
+function renderSMPWHotels() {
+  const container = document.getElementById('smpw-hotel-list');
+  if (!container) return;
+  const hotels = data.hotels.map(h => h.name);
+  const selected = new Set(data.smpw?.hotels || []);
+  if (!hotels.length) {
+    container.innerHTML = '<span style="font-size:13px;color:var(--muted)">No hotels configured yet — complete Stage 2 first.</span>';
+    return;
+  }
+  container.innerHTML = hotels.map(h => `
+    <label style="display:flex;align-items:center;gap:7px;padding:7px 13px;border-radius:20px;border:1px solid var(--border-light);background:var(--surface2);cursor:pointer;font-size:13px;font-weight:500;transition:all .15s"
+      onmouseenter="this.style.borderColor='var(--accent)'" onmouseleave="this.style.borderColor=''">
+      <input type="checkbox" class="smpw-hotel-chk" value="${esc(h)}" ${selected.has(h)?'checked':''} style="width:auto;accent-color:var(--accent)">
+      ${esc(h)}
+    </label>`).join('');
+}
+
+function addSMPWDateRow(dateVal='', cap='') {
+  const tbody = document.getElementById('smpw-date-body');
+  if (!tbody) return;
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><input type="date" class="smpw-date-input" value="${esc(dateVal)}" style="width:160px"></td>
+    <td>${numCtrl(cap||'', {cls:'smpw-cap', min:1, ph:'e.g. 80', wide:true})}</td>
+    <td><button class="remove-btn" onclick="this.closest('tr').remove()">×</button></td>`;
+  tbody.appendChild(tr);
+}
+
+function saveActivities() {
+  data.requiredActivities = [...document.querySelectorAll('#req-act-list .activity-card')].map(card => {
+    const gridId = card.querySelector('[id^="dates-"]')?.id;
+    const dates = gridId ? collectDatesFromGrid(gridId) : [];
+    const capVal = card.querySelector('.act-cap').value.trim();
+    const defMatch = REQ_DEFAULTS.find(d => d.name === (card.dataset.actName||card.querySelector('.act-name').value.trim()));
+    return {
+      name: card.querySelector('.act-name').value.trim(),
+      priority: parseInt(card.dataset.priority) || 1,
+      dates,
+      capacity: capVal ? parseInt(capVal) : null,
+      mutex: card.dataset.mutex || null,
+      prerequisites: defMatch ? defMatch.prerequisites : JSON.parse(card.dataset.prerequisites||'[]'),
+    };
+  }).filter(a => a.name);
+
+  data.optionalActivities = [...document.querySelectorAll('#opt-act-list .activity-card')].map(card => {
+    const gridId = card.querySelector('[id^="opt-dates-"]')?.id;
+    const dates = gridId ? collectDatesFromGrid(gridId) : [];
+    const capVal = card.querySelector('.opt-cap').value.trim();
+    const egReq = card.querySelector('.opt-prereq-eg').value;
+    return {
+      name: card.querySelector('.opt-name').value.trim(),
+      wantPct: (parseFloat(card.querySelector('.opt-want').value)||0)/100,
+      dates,
+      capacity: capVal ? parseInt(capVal) : null,
+      prerequisite: null,
+      prerequisite_group: egReq === 'yes' ? 'Evening Gathering' : null,
+    };
+  }).filter(a => a.name);
+
+  // SMPW
+  const smpwHotels = [...document.querySelectorAll('.smpw-hotel-chk:checked')].map(c => c.value);
+  const smpwDates = [...document.querySelectorAll('#smpw-date-body tr')].map(tr => {
+    const d = tr.querySelector('.smpw-date-input')?.value;
+    const c = tr.querySelector('.smpw-cap')?.value;
+    return d && c ? { date: d, cap: parseInt(c) } : null;
+  }).filter(Boolean);
+  data.smpw = { hotels: smpwHotels, dates: smpwDates };
+
+  // Preference depth
+  const pdGet = id => parseInt(document.getElementById(id)?.value) || 0;
+  data.preferenceDepth = {
+    threePlus: pdGet('pd-three-plus'),
+    twoThree:  pdGet('pd-two-three'),
+    oneTwo:    pdGet('pd-one-two'),
+    one:       pdGet('pd-one'),
+  };
+}
+
+function validateActivities() {
+  if (data.requiredActivities.length < 1) return 'Add at least one required activity.';
+  const noDate = data.requiredActivities.find(a => !a.dates.length);
+  if (noDate) return `"${noDate.name}" has no dates set. Use the date pickers to add at least one.`;
+  return null;
+}
+
+// ---- Stage 4: Scheduling ----
+function renderScheduling() {
+  const actNames = (data.requiredActivities||[]).map(a=>a.name)
+    .concat((data.optionalActivities||[]).map(a=>a.name));
+
+  document.getElementById('stage-container').innerHTML = `
+  <div class="stage-card">
+    <div class="stage-title">Stage 5 — Scheduling Rules</div>
+    <div class="stage-desc">These rules have a large effect on results. Read each question carefully.</div>
+
+    <div class="field">
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;font-size:13px;line-height:1.7;color:var(--muted)">
+        <strong style="color:var(--text)">Auto-configured prerequisite chain:</strong><br>
+        Field Service 1 + Field Service 2 must both be scheduled <em>before</em> Evening Gathering (AM or PM) can be scheduled.<br>
+        Evening Gathering (AM or PM) must be scheduled before any optional activity.
+      </div>
+    </div>
+
+    <div class="field">
+      <label>What does "Activity A has higher priority than Activity B" mean?</label>
+      <select id="order-mode">
+        <option value="priority" ${data.orderIsPriority!==false?'selected':''}>Allocation priority — A gets first pick of available dates &amp; capacity; B gets what's left</option>
+        <option value="calendar" ${data.orderIsPriority===false?'selected':''}>Calendar order — A must land on an earlier calendar date than B</option>
+      </select>
+      <div class="hint">⚠ Most common source of errors. "Allocation priority" is about which activity fills capacity first — it does NOT force an earlier date. Choose "Calendar order" only if groups must literally attend A before B on the calendar.</div>
+    </div>
+
+    <div class="field">
+      <label>Same-day exceptions <span style="color:var(--muted);font-weight:400">(groups are normally limited to one activity per day)</span></label>
+      <div class="hint" style="margin-bottom:10px">Add pairs of activities that <strong>can</strong> be scheduled on the same day for the same group.</div>
+      <div id="same-day-list"></div>
+      <button class="add-row-btn" onclick="addSameDayRow()">+ Add exception</button>
+    </div>
+  </div>`;
+
+  const saved = data.sameDayPairs || [];
+  if (saved.length) {
+    saved.forEach(p => addSameDayRow(p[0], p[1]));
+  }
+}
+
+function addSameDayRow(a='', b='') {
+  const actNames = (data.requiredActivities||[]).map(a=>a.name)
+    .concat((data.optionalActivities||[]).map(a=>a.name));
+  const opts = actNames.map(n => `<option value="${esc(n)}" ${n===a?'selected':''}>${esc(n)}</option>`).join('');
+  const opts2 = actNames.map(n => `<option value="${esc(n)}" ${n===b?'selected':''}>${esc(n)}</option>`).join('');
+  const list = document.getElementById('same-day-list');
+  const div = document.createElement('div');
+  div.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:8px';
+  div.innerHTML = `
+    <select class="sd-a" style="flex:1"><option value="">— activity —</option>${opts}</select>
+    <span style="color:var(--muted);font-size:13px;white-space:nowrap">same day as</span>
+    <select class="sd-b" style="flex:1"><option value="">— activity —</option>${opts2}</select>
+    <button class="remove-btn" onclick="this.parentElement.remove()">×</button>`;
+  list.appendChild(div);
+}
+
+function saveScheduling() {
+  data.orderIsPriority = document.getElementById('order-mode').value === 'priority';
+  data.sameDayPairs = [...document.querySelectorAll('#same-day-list > div')].map(div => {
+    const a = div.querySelector('.sd-a').value;
+    const b = div.querySelector('.sd-b').value;
+    return a && b && a !== b ? [a, b] : null;
+  }).filter(Boolean);
+}
+
+// ---- Stage 5: Transport ----
+function renderTransport() {
+  document.getElementById('stage-container').innerHTML = `
+  <div class="stage-card">
+    <div class="stage-title">Stage 6 — Transportation</div>
+    <div class="stage-desc">Bus capacity rules and pooling behavior.</div>
+
+    <div class="row">
+      <div class="field">
+        <label>Bus minimum passengers</label>
+        ${numCtrl(data.busMin||40, {id:'bus-min', min:1})}
+        <div class="hint">Trips below this count as "under-minimum".</div>
+      </div>
+      <div class="field">
+        <label>Bus maximum passengers</label>
+        ${numCtrl(data.busMax||50, {id:'bus-max', min:1})}
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Randomness</label>
+      <div class="hint">Each run uses a different random seed — results will vary slightly between runs with the same inputs, reflecting natural variation in delegate arrivals and assignments.</div>
+    </div>
+  </div>`;
+}
+
+function saveTransport() {
+  data.busMin = parseInt(document.getElementById('bus-min').value) || 40;
+  data.busMax = parseInt(document.getElementById('bus-max').value) || 50;
+  data.topupThreshold = data.busMax;
+  data.seed = Math.floor(Math.random() * 1000000);
+}
+
+function validateTransport() {
+  if (data.busMin >= data.busMax) return 'Bus minimum must be less than bus maximum.';
+  return null;
+}
+
+// ---- Stage 6: Review ----
+function renderReview() {
+  const p = data.population;
+  const gsdRows = (p.gsd||[]).map(r=>`<tr><td>Size ${r.size}</td><td>${r.pct}%</td></tr>`).join('');
+  const occVals = p.occ || OCC_DEFAULTS;
+  const occRows = occVals.map((v,i)=>`<tr><td>Night ${i+1}</td><td>${v}%</td></tr>`).join('');
+  const reqRows = data.requiredActivities.map(a=>`<tr><td>${esc(a.name)}</td><td>Priority ${a.priority}</td><td>${a.dates.length} dates</td><td>${a.capacity===null?'Unlimited':a.capacity}</td></tr>`).join('');
+  const hotelRows = data.hotels.map(h=>`<tr><td>${esc(h.name)}</td><td>${h.capacity}</td><td>${esc(data.hotelToStop[h.name]||'—')}</td></tr>`).join('');
+
+  document.getElementById('stage-container').innerHTML = `
+  <div class="stage-card">
+    <div class="stage-title">Stage 7 — Review & Run</div>
+    <div class="stage-desc">Confirm everything looks right, then run the pipeline.</div>
+
+    <div class="row" style="margin-bottom:20px">
+      <div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:6px">POPULATION</div>
+        <div style="font-size:14px">${p.type==='groups'?p.count+' groups':p.count+' delegates'}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">Window: ${p.windowStart} → ${p.windowEnd}</div>
+        <div style="font-size:12px;color:var(--muted)">Arrivals: ${Object.entries(p.arrival||{}).map(([d,v])=>`${d} ${v}%`).join(', ')}</div>
+        <div style="font-size:12px;color:var(--muted)">Check-out: derived from occupancy curve</div>
+      </div>
+      <div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:6px">BUSES</div>
+        <div style="font-size:14px">Min ${data.busMin} / Max ${data.busMax} pax</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">Top-up threshold: ${data.topupThreshold}</div>
+        <div style="font-size:12px;color:var(--muted)">Priority mode: ${data.orderIsPriority?'Allocation priority':'Calendar order'}</div>
+        <div style="font-size:12px;color:var(--muted)">Seed: ${data.seed}</div>
+      </div>
+    </div>
+
+    <table class="result-table" style="margin-bottom:20px">
+      <thead><tr><th>Hotel</th><th>Capacity</th><th>Stop</th></tr></thead>
+      <tbody>${hotelRows}</tbody>
+    </table>
+
+    <table class="result-table" style="margin-bottom:20px">
+      <thead><tr><th>Activity</th><th>Priority</th><th>Dates</th><th>Capacity</th></tr></thead>
+      <tbody>${reqRows}</tbody>
+    </table>
+
+    <div style="font-size:13px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;line-height:1.6">
+      <strong style="color:var(--text)">Stops:</strong> ${esc(data.stopNames.join(', '))}<br>
+      <strong style="color:var(--text)">Pairings:</strong> ${data.pairingRules.length ? data.pairingRules.map(r=>r.join(' ↔ ')).join(', ') : 'None'}<br>
+      <strong style="color:var(--text)">Optional activities:</strong> ${data.optionalActivities.length || 'None'}
+    </div>
+  </div>`;
+}
+
+// ============================================================
+// Navigation
+// ============================================================
+const savers = [savePopulation, saveHotels, saveStops, saveActivities, saveScheduling, saveTransport, ()=>{}];
+const validators = [validatePopulation, validateHotels, validateStops, validateActivities, ()=>null, validateTransport, ()=>null];
+
+function nextStage() {
+  savers[currentStage]();
+  const err = validators[currentStage]();
+  if (err) { alert(err); return; }
+
+  if (currentStage === STAGES.length - 1) {
+    runPipeline();
+    return;
+  }
+  currentStage++;
+  renderProgress();
+  renderStage(currentStage);
+  window.scrollTo(0,0);
+}
+
+function prevStage() {
+  if (currentStage === 0) return;
+  savers[currentStage]();
+  currentStage--;
+  renderProgress();
+  renderStage(currentStage);
+  window.scrollTo(0,0);
+}
+
+// ============================================================
+// Pipeline
+// ============================================================
+async function runPipeline() {
+  const config = buildConfig();
+  showSpinner('Running pipeline…');
+
+  try {
+    const resp = await fetch('/run', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ config }),
+    });
+    const result = await resp.json();
+    hideSpinner();
+    if (result.error) { alert('Pipeline error:\n' + result.error); return; }
+    pipelineResult = result;
+    showResults(result);
+  } catch(e) {
+    hideSpinner();
+    alert('Network error: ' + e.message);
+  }
+}
+
+function occToNightsDist(occ) {
+  // Arrival weight on night i = increase in occupancy arriving that night.
+  // occ[0] people arrive night 1; each subsequent increase = more arrivals.
+  const arrivals = occ.map((v, i) => Math.max(0, i === 0 ? v : v - occ[i - 1]));
+  const total = arrivals.reduce((s, v) => s + v, 0);
+  if (total === 0) return {'7': 1.0};
+  const dist = {};
+  arrivals.forEach((v, i) => { if (v > 0) dist[String(i + 1)] = v / total; });
+  return dist;
+}
+
+// Day-of-week name → JS getDay() index (0=Sun,1=Mon,...,6=Sat)
+const DOW_INDEX = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 };
+
+function arrivalDowToCheckinDist(arrival, windowStart) {
+  if (!windowStart) return null;
+  const base = new Date(windowStart + 'T00:00:00');
+  const total = Object.values(arrival).reduce((s, v) => s + v, 0);
+  if (total === 0) return null;
+  const dist = {};
+  // D1–D5 map directly to window day 0–4 (no day-of-week ambiguity)
+  ['D1','D2','D3','D4','D5'].forEach((key, i) => {
+    const pct = (arrival[key] || 0) / total;
+    if (pct > 0) {
+      const d = new Date(base);
+      d.setDate(d.getDate() + i);
+      dist[d.toISOString().slice(0, 10)] = pct;
+    }
+  });
+  return dist;
+}
+
+function occToCheckoutDist(occ, windowStart) {
+  // Departure weight after night i = decrease in occupancy leaving after that night.
+  // Everyone remaining departs after night 12.
+  const deps = occ.map((v, i) => {
+    if (i < occ.length - 1) return Math.max(0, v - occ[i + 1]);
+    return v; // everyone left after last night
+  });
+  const total = deps.reduce((s, v) => s + v, 0);
+  if (total === 0 || !windowStart) return null;
+  const base = new Date(windowStart);
+  const dist = {};
+  deps.forEach((v, i) => {
+    if (v > 0) {
+      // Check-out morning after night i+1 = windowStart + i+1 days
+      const d = new Date(base);
+      d.setDate(d.getDate() + i + 1);
+      dist[d.toISOString().split('T')[0]] = v / total;
+    }
+  });
+  return dist;
+}
+
+function buildConfig() {
+  const p = data.population;
+  const occ = p.occ || OCC_DEFAULTS;
+  const checkinDist = arrivalDowToCheckinDist(p.arrival || ARRIVAL_DOW_DEFAULTS, p.windowStart);
+  const checkoutDist = occToCheckoutDist(occ, p.windowStart);
+
+  const popCfg = {
+    group_size_distribution: Object.fromEntries((p.gsd||[]).map(r=>[r.size, r.pct/100])),
+    nights_distribution: occToNightsDist(occ),
+    core_stay_start: p.windowStart,
+    core_stay_end: p.windowStart,   // no blocked scheduling days
+    window_start: p.windowStart,
+    window_end: p.windowEnd,
+    checkout_policy: 'arrival_based',
+    checkin_distribution: checkinDist,
+    checkout_distribution: checkoutDist,
+  };
+  if (p.type === 'groups') popCfg.total_groups = p.count;
+  else popCfg.total_delegates = p.count;
+
+  return {
+    seed: data.seed,
+    population: popCfg,
+    hotels: data.hotels,
+    hotel_to_stop: data.hotelToStop,
+    stop_names: data.stopNames,
+    pairing_rules: data.pairingRules,
+    required_activities: data.requiredActivities.map(a=>({
+      name: a.name, priority: a.priority, dates: a.dates, capacity: a.capacity,
+      mutex_group: a.mutex || null,
+      prerequisites: a.prerequisites || [],
+    })),
+    optional_activities: data.optionalActivities.map(a=>({
+      name: a.name, dates: a.dates, capacity: a.capacity,
+      want_pct: a.wantPct, prerequisite: a.prerequisite || null,
+      prerequisite_group: a.prerequisite_group || null,
+    })),
+    same_day_pairs: (data.sameDayPairs || []),
+    bus_min: data.busMin,
+    bus_max: data.busMax,
+    topup_threshold: data.topupThreshold,
+    order_is_priority: data.orderIsPriority,
+    preference_depth: data.preferenceDepth || { threePlus:40, twoThree:30, oneTwo:20, one:10 },
+    smpw: {
+      hotels: data.smpw?.hotels || [],
+      dates: (data.smpw?.dates || []),
+    },
+  };
+}
+
+// ============================================================
+// Results
+// ============================================================
+function showResults(result) {
+  document.getElementById('wizard').style.display = 'none';
+  const resultsEl = document.getElementById('results');
+  resultsEl.classList.add('visible');
+
+  const s = result.summary;
+
+  // Stats
+  const pct = parseFloat(s.pct_under_min);
+  const smpwCard = s.smpw_groups > 0
+    ? `<div class="stat-card"><div class="stat-label">SMPW Groups</div><div class="stat-value" style="font-size:22px">${s.smpw_groups.toLocaleString()} <span style="font-size:13px;color:var(--muted);font-weight:400">(${s.smpw_delegates.toLocaleString()} del.)</span></div></div>`
+    : '';
+  const multiStopCard = `<div class="stat-card"><div class="stat-label">Multi-Stop Buses</div><div class="stat-value" style="font-size:22px">${(s.multi_stop_trips||0).toLocaleString()}</div></div>`;
+  const congSvcCard = `<div class="stat-card"><div class="stat-label">Cong. Service Days</div><div class="stat-value" style="font-size:22px">${(s.cong_service_days||0).toLocaleString()}<div style="font-size:11px;color:var(--muted);font-weight:400;margin-top:2px">FS1 + FS2 bus trips</div></div></div>`;
+  const dblBookCard = s.double_booked_groups > 0
+    ? `<div class="stat-card"><div class="stat-label">Same-Day Double</div><div class="stat-value warn" style="font-size:22px">${s.double_booked_groups.toLocaleString()} <span style="font-size:13px;font-weight:400;color:var(--muted)">(${(s.double_booked_delegates||0).toLocaleString()} del.)</span></div></div>`
+    : `<div class="stat-card"><div class="stat-label">Same-Day Double</div><div class="stat-value good" style="font-size:22px">0</div></div>`;
+
+  document.getElementById('stat-row').innerHTML = `
+    <div class="stat-card"><div class="stat-label">Delegates</div><div class="stat-value">${s.total_delegates.toLocaleString()}</div></div>
+    <div class="stat-card"><div class="stat-label">Groups</div><div class="stat-value">${s.total_groups.toLocaleString()}</div></div>
+    <div class="stat-card"><div class="stat-label">Bus Trips</div><div class="stat-value">${s.total_trips.toLocaleString()}</div></div>
+    <div class="stat-card"><div class="stat-label">Under Min</div><div class="stat-value ${pct>20?'warn':'good'}">${s.pct_under_min}%</div></div>
+    ${smpwCard}${multiStopCard}${congSvcCard}${dblBookCard}`;
+
+  // Activity table
+  const actBody = document.querySelector('#act-table tbody');
+  actBody.innerHTML = '';
+  for (const [act, n] of Object.entries(s.activity_assigned||{})) {
+    const rate = s.total_groups > 0 ? Math.round(100*n/s.total_groups) : 0;
+    const notSched = s.total_groups - n;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${esc(act)}</td><td>${n.toLocaleString()}</td><td>${rate}%</td><td>${notSched.toLocaleString()}</td>`;
+    actBody.appendChild(tr);
+  }
+
+  // Stop table
+  const stopBody = document.querySelector('#stop-table tbody');
+  stopBody.innerHTML = '';
+  for (const [stop, stats] of Object.entries(result.stop_summary||{})) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${esc(stop)}</td><td>${stats.total_trips}</td><td>${stats.under_min_trips}</td><td>${stats.total_passengers.toLocaleString()}</td>`;
+    stopBody.appendChild(tr);
+  }
+
+  // Findings
+  const findings = s.biggest_findings||[];
+  if (findings.length) {
+    document.getElementById('findings-section').style.display = 'block';
+    document.getElementById('findings-list').innerHTML = findings.map(f => {
+      const cls = f.startsWith('VALIDATION ERROR') ? 'error' : f.startsWith('ISOLATED')||f.startsWith('WARNING') ? '' : 'good';
+      return `<div class="finding ${cls}">${esc(f)}</div>`;
+    }).join('');
+  }
+
+  // Downloads
+  document.getElementById('dl-excel').href = result.excel_url;
+  document.getElementById('dl-report').href = result.report_url;
+
+  // Save run to history
+  saveRunResult(result);
+
+  // Chat
+  renderChatArea();
+}
+
+function renderChatArea() {
+  const area = document.getElementById('chat-area');
+  area.innerHTML = `
+    <div class="chat-messages" id="chat-messages"></div>
+    <div class="chat-input-row">
+      <input type="text" id="chat-input" placeholder="Ask about the results…" onkeydown="if(event.key==='Enter')sendChat()">
+      <button id="chat-send" onclick="sendChat()">Ask Claude</button>
+    </div>
+    <div id="no-key-note" style="margin-top:10px"></div>`;
+  checkChatAvailability();
+}
+
+async function checkChatAvailability() {
+  try {
+    const r = await fetch('/api-status');
+    const d = await r.json();
+    if (!d.available) {
+      document.getElementById('chat-input').disabled = true;
+      document.getElementById('chat-send').disabled = true;
+      document.getElementById('no-key-note').innerHTML = `
+        <div class="no-key-note">
+          💬 Chat analysis requires an Anthropic API key. To enable it:<br>
+          1. Get a key at <strong>console.anthropic.com</strong><br>
+          2. Stop the server, run: <code>export ANTHROPIC_API_KEY=sk-ant-...</code><br>
+          3. Restart: <code>python3 server.py</code>
+        </div>`;
+    }
+  } catch(e) {}
+}
+
+async function sendChat() {
+  if (chatStreaming) return;
+  const input = document.getElementById('chat-input');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+
+  const msgs = document.getElementById('chat-messages');
+  const userDiv = document.createElement('div');
+  userDiv.className = 'chat-msg user';
+  userDiv.textContent = text;
+  msgs.appendChild(userDiv);
+
+  chatStreaming = true;
+  document.getElementById('chat-send').disabled = true;
+
+  const aiDiv = document.createElement('div');
+  aiDiv.className = 'chat-msg assistant';
+  aiDiv.textContent = '…';
+  msgs.appendChild(aiDiv);
+  msgs.scrollTop = 99999;
+
+  try {
+    const resp = await fetch('/chat', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ message: text, result_context: pipelineResult?.summary }),
+    });
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '', aiText = '';
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, {stream:true});
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const d = JSON.parse(line.slice(6));
+        if (d.type === 'text') { aiText += d.content; aiDiv.textContent = aiText; msgs.scrollTop=99999; }
+      }
+    }
+  } catch(e) {
+    aiDiv.textContent = 'Error: ' + e.message;
+  } finally {
+    chatStreaming = false;
+    document.getElementById('chat-send').disabled = false;
+  }
+}
+
+// ============================================================
+// Save / Load config
+// ============================================================
+function saveConfig() {
+  const name = prompt('Name this config (used as filename):', 'convention_config');
+  if (name === null) return;
+  const filename = (name.trim() || 'convention_config').replace(/[^a-z0-9_\-]/gi, '_') + '.json';
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+}
+
+function loadConfig(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const loaded = JSON.parse(e.target.result);
+      Object.assign(data, loaded);
+      currentStage = 0;
+      renderStage();
+      alert('Config loaded! Review each stage before running.');
+    } catch {
+      alert('Failed to load config — make sure it\'s a valid JSON file saved from this tool.');
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = ''; // allow re-loading same file
+}
+
+// ============================================================
+// Run history & comparison
+// ============================================================
+const MAX_RUNS = 6;
+
+function loadRuns() {
+  try { return JSON.parse(localStorage.getItem('clx_runs') || '[]'); } catch { return []; }
+}
+
+function saveRuns(runs) {
+  localStorage.setItem('clx_runs', JSON.stringify(runs));
+}
+
+function saveRunResult(result) {
+  const runs = loadRuns();
+  const now = new Date();
+  const label = `Run ${runs.length + 1}`;
+  runs.unshift({
+    id: Date.now(),
+    label,
+    date: now.toLocaleDateString() + ' ' + now.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}),
+    summary: result.summary,
+    stop_summary: result.stop_summary,
+    configSnapshot: {
+      population: data.population,
+      busMin: data.busMin,
+      busMax: data.busMax,
+    },
+  });
+  if (runs.length > MAX_RUNS) runs.length = MAX_RUNS;
+  saveRuns(runs);
+  renderRunHistory();
+}
+
+function deleteRun(id) {
+  saveRuns(loadRuns().filter(r => r.id !== id));
+  renderRunHistory();
+  renderCompareContent();
+}
+
+function renameRun(id, newLabel) {
+  const runs = loadRuns();
+  const run = runs.find(r => r.id === id);
+  if (run) { run.label = newLabel; saveRuns(runs); }
+}
+
+function renderRunHistory() {
+  const el = document.getElementById('run-history-list');
+  if (!el) return;
+  const runs = loadRuns();
+  if (!runs.length) { el.innerHTML = '<span style="color:var(--muted);font-size:13px">No saved runs yet — results appear here after each run.</span>'; return; }
+  el.innerHTML = runs.map(r => `
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1">
+        <span style="font-weight:500">${esc(r.label)}</span>
+        <span style="color:var(--muted);font-size:11px;margin-left:8px">${r.date}</span>
+      </div>
+      <span style="font-size:12px;color:var(--muted)">${r.summary.total_groups.toLocaleString()} groups · ${r.summary.total_trips} trips · ${r.summary.pct_under_min}% under-min</span>
+      <button class="delete-run-btn" onclick="deleteRun(${r.id})" title="Remove">×</button>
+    </div>`).join('');
+}
+
+function showCompare() {
+  const runs = loadRuns();
+  if (runs.length < 1) { alert('No saved runs to compare yet.'); return; }
+  document.getElementById('compare-modal').classList.add('show');
+  renderCompareContent();
+}
+
+function closeCompare() {
+  document.getElementById('compare-modal').classList.remove('show');
+}
+
+function renderCompareContent() {
+  const runs = loadRuns();
+  const el = document.getElementById('compare-content');
+  if (!el) return;
+  if (!runs.length) { el.innerHTML = '<p style="color:var(--muted)">No runs saved yet.</p>'; return; }
+
+  // Collect all activity names across runs
+  const actNames = [...new Set(runs.flatMap(r => Object.keys(r.summary.activity_assigned || {})))];
+
+  // Helper: highlight best value in a row
+  function bestIdx(vals, lowerIsBetter=false) {
+    const nums = vals.map(v => parseFloat(v));
+    const best = lowerIsBetter ? Math.min(...nums.filter(n => !isNaN(n))) : Math.max(...nums.filter(n => !isNaN(n)));
+    return nums.map(n => n === best);
+  }
+
+  function row(label, vals, lowerIsBetter=false) {
+    const bests = bestIdx(vals, lowerIsBetter);
+    return `<tr>
+      <td>${label}</td>
+      ${vals.map((v,i) => `<td class="run-val ${bests[i]?'best':''}">${v}</td>`).join('')}
+    </tr>`;
+  }
+
+  const totalGroups = runs.map(r => r.summary.total_groups.toLocaleString());
+  const totalDels = runs.map(r => r.summary.total_delegates.toLocaleString());
+  const trips = runs.map(r => r.summary.total_trips.toLocaleString());
+  const underMin = runs.map(r => r.summary.pct_under_min + '%');
+
+  el.innerHTML = `
+    <table class="compare-table">
+      <thead>
+        <tr>
+          <th style="width:180px">Metric</th>
+          ${runs.map(r => `<th class="run-col">
+            <div class="run-label-cell">
+              <input value="${esc(r.label)}" onchange="renameRun(${r.id}, this.value)" title="Click to rename">
+              <span class="run-date">${r.date}</span>
+              <button class="delete-run-btn" onclick="deleteRun(${r.id})">× remove</button>
+            </div>
+          </th>`).join('')}
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="section-head"><td colspan="${runs.length+1}">Population</td></tr>
+        ${row('Groups', totalGroups)}
+        ${row('Delegates', totalDels)}
+        <tr class="section-head"><td colspan="${runs.length+1}">Activity Assignment Rate</td></tr>
+        ${actNames.map(act => {
+          const vals = runs.map(r => {
+            const n = (r.summary.activity_assigned||{})[act] ?? null;
+            if (n === null) return '—';
+            return Math.round(100 * n / r.summary.total_groups) + '%';
+          });
+          return row(act, vals);
+        }).join('')}
+        <tr class="section-head"><td colspan="${runs.length+1}">Bus Performance</td></tr>
+        ${row('Total trips', trips)}
+        ${row('Under-minimum %', underMin, true)}
+      </tbody>
+    </table>
+    <div style="font-size:11px;color:var(--muted);margin-top:12px">Green = best value in each row. Click a run name to rename it.</div>`;
+}
+
+function goBackFromResults() {
+  document.getElementById('results').classList.remove('visible');
+  document.getElementById('wizard').style.display = '';
+  // Return to last wizard stage (stage 7 = review)
+  currentStage = STAGES.length - 1;
+  renderStage();
+}
+
+function restart() {
+  location.reload();
+}
+
+// ============================================================
+// Spinner
+// ============================================================
+function showSpinner(label) {
+  document.getElementById('spinner-label').textContent = label;
+  document.getElementById('spinner').classList.add('show');
+}
+function hideSpinner() {
+  document.getElementById('spinner').classList.remove('show');
+}
+
+// ============================================================
+// Utilities
+// ============================================================
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ============================================================
+// Init
+// ============================================================
+renderProgress();
+renderStage(0);
+
+// Close native date picker as soon as a date is chosen
+document.addEventListener('change', e => {
+  if (e.target.type === 'date') e.target.blur();
+});
+</script>
+</body>
+</html>
