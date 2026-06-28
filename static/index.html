@@ -790,7 +790,17 @@ function savePopulation() {
     windowEnd = d.toISOString().split('T')[0];
   }
 
-  data.population = { type, count, gsd, los, arrival, windowStart, windowEnd };
+  // Core stay is always nights 7–9 of the window (0-indexed: days 6, 7, 8)
+  let coreStayStart = '', coreStayEnd = '';
+  if (windowStart) {
+    const cs = new Date(windowStart + 'T00:00:00');
+    cs.setDate(cs.getDate() + 6);
+    coreStayStart = cs.toISOString().split('T')[0];
+    const ce = new Date(windowStart + 'T00:00:00');
+    ce.setDate(ce.getDate() + 8);
+    coreStayEnd = ce.toISOString().split('T')[0];
+  }
+  data.population = { type, count, gsd, los, arrival, windowStart, windowEnd, coreStayStart, coreStayEnd };
 }
 
 function validatePopulation() {
@@ -1230,8 +1240,6 @@ function addOptActivity(a={}) {
   renderDateGrid(`opt-dates-${id}`, a.dates || []);
 }
 
-// Blocked window nights (0-indexed): days 7, 8, 9 = indices 6, 7, 8
-const BLOCKED_NIGHT_INDICES = new Set([6, 7, 8]);
 const DAY_ABBR = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
 function renderDateGrid(containerId, selectedDates = []) {
@@ -1245,6 +1253,18 @@ function renderDateGrid(containerId, selectedDates = []) {
   const base = new Date(windowStart + 'T00:00:00');
   const selectedSet = new Set(selectedDates);
 
+  // Compute blocked indices from actual core stay dates
+  const coreStart = data.population && data.population.coreStayStart;
+  const coreEnd   = data.population && data.population.coreStayEnd;
+  const blockedDates = new Set();
+  if (coreStart && coreEnd) {
+    const cs = new Date(coreStart + 'T00:00:00');
+    const ce = new Date(coreEnd   + 'T00:00:00');
+    for (let d2 = new Date(cs); d2 <= ce; d2.setDate(d2.getDate() + 1)) {
+      blockedDates.add(d2.toISOString().split('T')[0]);
+    }
+  }
+
   const grid = document.createElement('div');
   grid.className = 'date-chip-grid';
 
@@ -1255,7 +1275,7 @@ function renderDateGrid(containerId, selectedDates = []) {
     const dateStr = d.toISOString().split('T')[0];
     const dayName = DAY_ABBR[d.getDay()];
     const dayNum = d.getDate();
-    const isBlocked = BLOCKED_NIGHT_INDICES.has(i);
+    const isBlocked = blockedDates.has(dateStr);
 
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -1650,8 +1670,8 @@ function buildConfig() {
   const popCfg = {
     group_size_distribution: Object.fromEntries((p.gsd||[]).map(r=>[r.size, r.pct/100])),
     nights_distribution: nightsDist,
-    core_stay_start: p.windowStart,
-    core_stay_end: p.windowStart,
+    core_stay_start: p.coreStayStart,
+    core_stay_end: p.coreStayEnd,
     window_start: p.windowStart,
     window_end: p.windowEnd,
     checkout_policy: 'arrival_based',
