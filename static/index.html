@@ -506,7 +506,7 @@ function jumpToStage(idx) {
 // ============================================================
 // Stage renderers
 // ============================================================
-function renderStage(idx) {
+function renderStage(idx = currentStage) {
   const container = document.getElementById('stage-container');
   const renderers = [
     renderPopulation, renderHotels, renderStops,
@@ -1859,6 +1859,7 @@ function loadConfig(event) {
       const loaded = JSON.parse(e.target.result);
       Object.assign(data, loaded);
       currentStage = 0;
+      renderProgress();
       renderStage();
       alert('Config loaded! Review each stage before running.');
     } catch {
