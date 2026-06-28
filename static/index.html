@@ -1504,8 +1504,6 @@ function validateTransport() {
 function renderReview() {
   const p = data.population;
   const gsdRows = (p.gsd||[]).map(r=>`<tr><td>Size ${r.size}</td><td>${r.pct}%</td></tr>`).join('');
-  const occVals = p.occ || OCC_DEFAULTS;
-  const occRows = occVals.map((v,i)=>`<tr><td>Night ${i+1}</td><td>${v}%</td></tr>`).join('');
   const reqRows = data.requiredActivities.map(a=>`<tr><td>${esc(a.name)}</td><td>Priority ${a.priority}</td><td>${a.dates.length} dates</td><td>${a.capacity===null?'Unlimited':a.capacity}</td></tr>`).join('');
   const hotelRows = data.hotels.map(h=>`<tr><td>${esc(h.name)}</td><td>${h.capacity}</td><td>${esc(data.hotelToStop[h.name]||'—')}</td></tr>`).join('');
 
