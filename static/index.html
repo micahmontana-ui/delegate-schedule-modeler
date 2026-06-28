@@ -380,7 +380,7 @@ input[type=number] { -moz-appearance:textfield; }
   <div class="result-section">
     <h3>Activity Assignment <span style="font-size:12px;font-weight:400;color:var(--muted)">[R] = Required &nbsp; [O] = Optional</span></h3>
     <table class="result-table" id="act-table">
-      <thead><tr><th>Activity</th><th>Assigned Groups</th><th>Rate</th><th>Not Scheduled</th></tr></thead>
+      <thead><tr><th>Activity</th><th>Groups</th><th>Delegates</th><th>Rate</th><th>Not Scheduled</th></tr></thead>
       <tbody></tbody>
     </table>
   </div>
@@ -1748,11 +1748,13 @@ function showResults(result) {
   // Activity table
   const actBody = document.querySelector('#act-table tbody');
   actBody.innerHTML = '';
-  for (const [act, n] of Object.entries(s.activity_assigned||{})) {
-    const rate = s.total_groups > 0 ? Math.round(100*n/s.total_groups) : 0;
-    const notSched = s.total_groups - n;
+  for (const [act, vals] of Object.entries(s.activity_assigned||{})) {
+    const groups = typeof vals === 'object' ? vals.groups : vals;
+    const delegates = typeof vals === 'object' ? vals.delegates : '—';
+    const rate = s.total_groups > 0 ? Math.round(100*groups/s.total_groups) : 0;
+    const notSched = s.total_groups - groups;
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${esc(act)}</td><td>${n.toLocaleString()}</td><td>${rate}%</td><td>${notSched.toLocaleString()}</td>`;
+    tr.innerHTML = `<td>${esc(act)}</td><td>${groups.toLocaleString()}</td><td>${typeof delegates === 'number' ? delegates.toLocaleString() : delegates}</td><td>${rate}%</td><td>${notSched.toLocaleString()}</td>`;
     actBody.appendChild(tr);
   }
 

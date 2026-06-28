@@ -306,8 +306,18 @@ def execute_pipeline(config: dict) -> dict:
     total_trips = len(bus_trips_df) if not bus_trips_df.empty else 0
     under_min = int(bus_trips_df["UnderMinimum"].sum()) if not bus_trips_df.empty else 0
     pct_under = f"{100*under_min/total_trips:.1f}" if total_trips else "0.0"
-    act_assigned = {f"[R] {name}": int(df[f"req_{name}"].notna().sum()) for name in REQUIRED}
-    act_assigned.update({f"[O] {name}": int(df[f"opt_{name}"].notna().sum()) for name in OPTIONAL})
+    act_assigned = {
+        f"[R] {name}": {
+            "groups": int(df[f"req_{name}"].notna().sum()),
+            "delegates": int(df.loc[df[f"req_{name}"].notna(), "GroupSize"].sum()),
+        } for name in REQUIRED
+    }
+    act_assigned.update({
+        f"[O] {name}": {
+            "groups": int(df[f"opt_{name}"].notna().sum()),
+            "delegates": int(df.loc[df[f"opt_{name}"].notna(), "GroupSize"].sum()),
+        } for name in OPTIONAL
+    })
     smpw_total_groups = int(df["smpw_date"].notna().sum())
     smpw_total_delegates = int(df.loc[df["smpw_date"].notna(), "GroupSize"].sum()) if smpw_total_groups else 0
     smpw_by_day = {}
