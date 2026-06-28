@@ -306,9 +306,14 @@ def execute_pipeline(config: dict) -> dict:
     total_trips = len(bus_trips_df) if not bus_trips_df.empty else 0
     under_min = int(bus_trips_df["UnderMinimum"].sum()) if not bus_trips_df.empty else 0
     pct_under = f"{100*under_min/total_trips:.1f}" if total_trips else "0.0"
-    act_assigned = {name: int(df[f"req_{name}"].notna().sum()) for name in REQUIRED}
+    act_assigned = {f"[R] {name}": int(df[f"req_{name}"].notna().sum()) for name in REQUIRED}
+    act_assigned.update({f"[O] {name}": int(df[f"opt_{name}"].notna().sum()) for name in OPTIONAL})
     smpw_total_groups = int(df["smpw_date"].notna().sum())
     smpw_total_delegates = int(df.loc[df["smpw_date"].notna(), "GroupSize"].sum()) if smpw_total_groups else 0
+    smpw_by_day = {}
+    if smpw_total_groups:
+        for d, grp in df[df["smpw_date"].notna()].groupby("smpw_date"):
+            smpw_by_day[str(d)] = {"groups": int(len(grp)), "delegates": int(grp["GroupSize"].sum())}
 
     # Multi-stop bus trips
     multi_stop_trips = 0
@@ -340,6 +345,7 @@ def execute_pipeline(config: dict) -> dict:
         "activity_assigned": act_assigned,
         "smpw_groups": smpw_total_groups,
         "smpw_delegates": smpw_total_delegates,
+        "smpw_by_day": smpw_by_day,
         "multi_stop_trips": multi_stop_trips,
         "cong_service_days": cong_service_days,
         "double_booked_groups": double_booked_groups,

@@ -378,9 +378,9 @@ input[type=number] { -moz-appearance:textfield; }
   <div class="stat-row" id="stat-row"></div>
 
   <div class="result-section">
-    <h3>Activity Assignment</h3>
+    <h3>Activity Assignment <span style="font-size:12px;font-weight:400;color:var(--muted)">[R] = Required &nbsp; [O] = Optional</span></h3>
     <table class="result-table" id="act-table">
-      <thead><tr><th>Activity</th><th>Assigned</th><th>Rate</th><th>Not Scheduled</th></tr></thead>
+      <thead><tr><th>Activity</th><th>Assigned Groups</th><th>Rate</th><th>Not Scheduled</th></tr></thead>
       <tbody></tbody>
     </table>
   </div>
@@ -389,6 +389,14 @@ input[type=number] { -moz-appearance:textfield; }
     <h3>Bus Trip Summary by Stop</h3>
     <table class="result-table" id="stop-table">
       <thead><tr><th>Stop</th><th>Total Trips</th><th>Under Min</th><th>Total Passengers</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="result-section" id="smpw-day-section" style="display:none">
+    <h3>SMPW by Day</h3>
+    <table class="result-table" id="smpw-day-table">
+      <thead><tr><th>Date</th><th>Groups</th><th>Delegates</th></tr></thead>
       <tbody></tbody>
     </table>
   </div>
@@ -1755,6 +1763,20 @@ function showResults(result) {
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${esc(stop)}</td><td>${stats.total_trips}</td><td>${stats.under_min_trips}</td><td>${stats.total_passengers.toLocaleString()}</td>`;
     stopBody.appendChild(tr);
+  }
+
+  // SMPW by day
+  const smpwByDay = s.smpw_by_day || {};
+  const smpwDaySection = document.getElementById('smpw-day-section');
+  const smpwDayBody = document.querySelector('#smpw-day-table tbody');
+  smpwDayBody.innerHTML = '';
+  if (Object.keys(smpwByDay).length) {
+    smpwDaySection.style.display = 'block';
+    for (const [d, counts] of Object.entries(smpwByDay).sort()) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${esc(d)}</td><td>${counts.groups.toLocaleString()}</td><td>${counts.delegates.toLocaleString()}</td>`;
+      smpwDayBody.appendChild(tr);
+    }
   }
 
   // Findings
