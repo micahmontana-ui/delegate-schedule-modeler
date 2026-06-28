@@ -490,8 +490,17 @@ function renderProgress() {
     const cls = i < currentStage ? 'done' : i === currentStage ? 'active' : '';
     const dot = i < currentStage ? '✓' : i + 1;
     const line = i < STAGES.length - 1 ? `<div class="step-line"></div>` : '';
-    return `<div class="step ${cls}"><div class="step-dot">${dot}</div><div class="step-label">${s.label}</div></div>${line}`;
+    const clickable = i < currentStage ? `onclick="jumpToStage(${i})" style="cursor:pointer" title="Jump to ${s.label}"` : '';
+    return `<div class="step ${cls}" ${clickable}><div class="step-dot">${dot}</div><div class="step-label">${s.label}</div></div>${line}`;
   }).join('');
+}
+
+function jumpToStage(idx) {
+  saveStage(currentStage);
+  currentStage = idx;
+  renderProgress();
+  renderStage();
+  scrollToTop();
 }
 
 // ============================================================
@@ -523,8 +532,16 @@ const GSD_DEFAULTS = [
 // Arrival day-of-week defaults: Sat/Sun/Mon/Tue/Wed
 const ARRIVAL_DOW_DEFAULTS = { D1:5, D2:45, D3:20, D4:20, D5:10 };
 
-// Default occupancy curve: % of peak on each of the 12 window nights
-const OCC_DEFAULTS = [5, 30, 70, 85, 95, 100, 100, 100, 100, 50, 30, 10];
+// Default length-of-stay distribution (nights → % of groups)
+const LOS_DEFAULTS = [
+  { nights:3, pct:5  },
+  { nights:4, pct:10 },
+  { nights:5, pct:15 },
+  { nights:6, pct:20 },
+  { nights:7, pct:25 },
+  { nights:8, pct:15 },
+  { nights:9, pct:10 },
+];
 
 function renderPopulation() {
   const p = data.population;
@@ -586,11 +603,16 @@ function renderPopulation() {
       </div>
     </div>
 
-    <!-- Section 3: Occupancy curve -->
+    <!-- Section 3: Length of Stay -->
     <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:18px 20px;background:var(--surface2)">
-      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Occupancy Curve</div>
-      <div class="hint" style="margin-bottom:12px">% of peak occupancy per night. 100% = busiest night. Used to derive stay-length distribution.</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 24px" id="occ-grid"></div>
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Length of Stay</div>
+      <div class="hint" style="margin-bottom:12px">How long delegates stay. Adjust the mix and watch how it affects scheduling availability. Must sum to 100%.</div>
+      <table class="dist-table" style="max-width:340px">
+        <thead><tr><th>Nights</th><th>% of groups</th><th></th></tr></thead>
+        <tbody id="los-body"></tbody>
+      </table>
+      <button class="add-row-btn" onclick="addLOSRow()">+ Add row</button>
+      <div class="dist-total" id="los-total"></div>
     </div>
 
   </div>`;
@@ -599,22 +621,16 @@ function renderPopulation() {
   const gsdRows = p.gsd && p.gsd.length ? p.gsd : GSD_DEFAULTS;
   gsdRows.forEach(r => addGSDRow(r.size, r.pct));
 
-  // Occupancy — 12 nights laid out in a 2-column grid
-  const occVals = p.occ && p.occ.length === 12 ? p.occ : OCC_DEFAULTS;
-  const occGrid = document.getElementById('occ-grid');
-  occVals.forEach((val, i) => {
-    const cell = document.createElement('div');
-    cell.style.cssText = 'display:flex;align-items:center;gap:8px;padding:3px 0';
-    cell.innerHTML = `<span style="font-size:12px;color:var(--muted);width:52px;flex-shrink:0">Night ${i+1}</span>
-      ${numCtrl(val, {min:0, max:100, cls:'occ-input', on:'syncOccupancy()'})}`;
-    occGrid.appendChild(cell);
-  });
+  // Length of Stay rows
+  const losRows = p.los && p.los.length ? p.los : LOS_DEFAULTS;
+  losRows.forEach(r => addLOSRow(r.nights, r.pct));
 
   // Arrival table
   const arrSaved = p.arrival || ARRIVAL_DOW_DEFAULTS;
   renderArrivalTable(arrSaved);
 
   updateDistTotal('gsd');
+  updateDistTotal('los');
   updateArrivalTotal();
 }
 
@@ -710,8 +726,14 @@ function onWindowStartChange() {
   // No auto-calculation needed in UI — window end = start + 12 is handled in savePopulation
 }
 
-function syncOccupancy() {
-  // Nothing to total — occupancy values are independent % of peak, not a distribution
+function addLOSRow(nights='', pct='') {
+  const tbody = document.getElementById('los-body');
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td>${numCtrl(nights, {min:1, max:30, step:1, ph:'e.g. 5', on:"updateDistTotal('los')"})}</td>
+    <td>${numCtrl(pct, {min:0, max:100, step:1, ph:'0', on:"updateDistTotal('los')"})}</td>
+    <td><button class="remove-btn" onclick="this.closest('tr').remove();updateDistTotal('los')">×</button></td>`;
+  tbody.appendChild(tr);
+  updateDistTotal('los');
 }
 
 function togglePopType() {
@@ -755,7 +777,7 @@ function savePopulation() {
   const type = document.getElementById('pop-type').value;
   const count = parseInt(document.getElementById('pop-count').value) || 0;
   const gsd = collectDistRows('gsd', 'size');
-  const occ = [...document.querySelectorAll('.occ-input')].map(i => parseFloat(i.value) || 0);
+  const los = collectDistRows('los', 'nights');
 
   const arrival = {};
   document.querySelectorAll('.arrival-pct').forEach(el => {
@@ -770,7 +792,7 @@ function savePopulation() {
     windowEnd = d.toISOString().split('T')[0];
   }
 
-  data.population = { type, count, gsd, occ, arrival, windowStart, windowEnd };
+  data.population = { type, count, gsd, los, arrival, windowStart, windowEnd };
 }
 
 function validatePopulation() {
@@ -779,6 +801,9 @@ function validatePopulation() {
   if (p.gsd.length < 1) return 'Add at least one group size.';
   const gsdSum = p.gsd.reduce((s,r) => s + r.pct, 0);
   if (Math.abs(gsdSum - 100) > 5) return `Group size percentages sum to ${gsdSum.toFixed(1)}% — should total 100%.`;
+  if (!p.los || p.los.length < 1) return 'Add at least one length-of-stay row.';
+  const losSum = p.los.reduce((s,r) => s + (r.pct||0), 0);
+  if (Math.abs(losSum - 100) > 5) return `Length of stay percentages sum to ${losSum.toFixed(1)}% — should total 100%.`;
   if (!p.windowStart) return 'Enter the first possible check-in date.';
   const arrTotal = Object.values(p.arrival||{}).reduce((s,v)=>s+v,0);
   if (Math.abs(arrTotal - 100) > 2) return `Arrival day-of-week percentages sum to ${arrTotal}% — normalize to 100% first.`;
@@ -1611,20 +1636,24 @@ function occToCheckoutDist(occ, windowStart) {
 
 function buildConfig() {
   const p = data.population;
-  const occ = p.occ || OCC_DEFAULTS;
+  const los = p.los && p.los.length ? p.los : LOS_DEFAULTS;
   const checkinDist = arrivalDowToCheckinDist(p.arrival || ARRIVAL_DOW_DEFAULTS, p.windowStart);
-  const checkoutDist = occToCheckoutDist(occ, p.windowStart);
+
+  // Build nights distribution directly from LOS table
+  const nightsDist = {};
+  const losTotal = los.reduce((s, r) => s + (r.pct || 0), 0) || 100;
+  los.forEach(r => { if (r.nights && r.pct) nightsDist[String(r.nights)] = r.pct / losTotal; });
 
   const popCfg = {
     group_size_distribution: Object.fromEntries((p.gsd||[]).map(r=>[r.size, r.pct/100])),
-    nights_distribution: occToNightsDist(occ),
+    nights_distribution: nightsDist,
     core_stay_start: p.windowStart,
-    core_stay_end: p.windowStart,   // no blocked scheduling days
+    core_stay_end: p.windowStart,
     window_start: p.windowStart,
     window_end: p.windowEnd,
     checkout_policy: 'arrival_based',
     checkin_distribution: checkinDist,
-    checkout_distribution: checkoutDist,
+    checkout_distribution: null,
   };
   if (p.type === 'groups') popCfg.total_groups = p.count;
   else popCfg.total_delegates = p.count;
@@ -1982,9 +2011,10 @@ function renderCompareContent() {
 function goBackFromResults() {
   document.getElementById('results').classList.remove('visible');
   document.getElementById('wizard').style.display = '';
-  // Return to last wizard stage (stage 7 = review)
-  currentStage = STAGES.length - 1;
+  currentStage = 0;
+  renderProgress();
   renderStage();
+  scrollToTop();
 }
 
 function restart() {
