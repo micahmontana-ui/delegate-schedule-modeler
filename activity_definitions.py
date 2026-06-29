@@ -71,6 +71,7 @@ def build_activity_defs(
             "priority": priority,
             "prerequisites": act.get("prerequisites") or [],
             "mutex_group": act.get("mutex_group"),
+            "cap_pool": act.get("cap_pool"),
         }
 
     for act in raw_optional:
@@ -103,6 +104,7 @@ def build_activity_defs(
         OPTIONAL[name] = {
             "dates": dates,
             "capacity": capacity,
+            "min_capacity": act.get("min_capacity"),
             "want_pct": want_pct,
             "prerequisite": prereq,
             "prerequisite_group": act.get("prerequisite_group"),

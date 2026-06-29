@@ -3,9 +3,10 @@
   "configurations": [
     {
       "name": "convention-logistics",
-      "runtimeExecutable": "python3",
+      "runtimeExecutable": "/usr/bin/python3",
       "runtimeArgs": ["server.py"],
-      "port": 8000
+      "port": 8000,
+      "autoPort": false
     }
   ]
 }

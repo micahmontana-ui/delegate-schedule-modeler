@@ -2,16 +2,17 @@
 SMPW Assignment Module
 
 SMPW is a sub-activity of Field Service. Groups assigned to SMPW have
-either their FS1 or FS2 requirement fulfilled (whichever they still need).
+either their FS1 or FS2 requirement fulfilled (whichever is scheduled on
+the SMPW date). They do not ride a bus that day.
 
 Rules:
   - Only groups from SMPW-eligible hotels
-  - Only groups whose delegate count is divisible by 2
+  - Only groups present on the SMPW date (CheckIn < date < CheckOut)
+  - Group must already have FS1 or FS2 scheduled on that exact date
+    (SMPW replaces the bus trip — the FS col date is unchanged)
   - Each group may be assigned SMPW at most once
-  - Per-date delegate cap
-  - SMPW groups are excluded from bus assignment
-  - Bus-efficiency targeting: prefer pulling groups that would cause
-    under-minimum bus trips at their stop
+  - Per-date delegate cap (greedy smallest-first to fill cap tightly)
+  - Bus-efficiency targeting: prefer stops with under-minimum leftovers
 """
 
 from __future__ import annotations
@@ -29,24 +30,6 @@ def assign_smpw(
     bus_max: int,
     assumptions: list[str],
 ) -> tuple[pd.DataFrame, list[str]]:
-    """
-    Parameters
-    ----------
-    df : scheduled population with req_* columns already filled by scheduler
-    smpw_config : {
-        "hotels": [str, ...],          # eligible hotel names
-        "dates": [{"date": date, "cap": int}, ...]  # per-date delegate caps
-    }
-    bus_min, bus_max : bus sizing (used to target under-minimum situations)
-    assumptions : running log
-
-    Returns
-    -------
-    df : updated with columns:
-        smpw_date       (date | None)
-        smpw_fulfills   ("Field Service 1" | "Field Service 2" | None)
-    assumptions : updated log
-    """
     df = df.copy()
     df["smpw_date"] = None
     df["smpw_fulfills"] = None
@@ -73,113 +56,92 @@ def assign_smpw(
         daily_cap: int = date_cfg["cap"]
         delegates_used = 0
 
-        # Candidate groups for this date:
-        #   - From eligible hotel
-        #   - Even delegate count
-        #   - Not already assigned SMPW
-        #   - Still need at least one FS (FS1 or FS2 not fulfilled)
-        #   - Present on this date (check-in < smpw_date < check-out)
-        def needs_fs(row):
-            fs1_done = fs1_col in df.columns and pd.notna(row.get(fs1_col))
-            fs2_done = fs2_col in df.columns and pd.notna(row.get(fs2_col))
-            return not (fs1_done and fs2_done)  # needs at least one
+        # --- Eligibility -------------------------------------------------
+        # Group must:
+        #   1. Be from an eligible hotel
+        #   2. Be present (CheckIn < smpw_date < CheckOut)
+        #   3. Not already assigned SMPW
+        #   4. Have FS1 or FS2 scheduled on this exact date
+        #      (SMPW replaces that bus trip — the FS col is left unchanged)
 
-        def which_fs(row):
-            fs1_done = fs1_col in df.columns and pd.notna(row.get(fs1_col))
-            if not fs1_done:
+        def which_fs_on_date(row) -> str | None:
+            if fs1_col in df.columns and row.get(fs1_col) == smpw_date:
                 return "Field Service 1"
-            fs2_done = fs2_col in df.columns and pd.notna(row.get(fs2_col))
-            if not fs2_done:
+            if fs2_col in df.columns and row.get(fs2_col) == smpw_date:
                 return "Field Service 2"
             return None
 
-        mask = (
+        base_mask = (
             df["Hotel"].isin(eligible_hotels) &
-            (df["GroupSize"] % 2 == 0) &
             df["smpw_date"].isna() &
             (df["CheckIn"] < smpw_date) &
             (df["CheckOut"] > smpw_date)
         )
 
-        # Apply FS need filter
         candidates_idx = [
-            idx for idx in df.index[mask]
-            if which_fs(df.loc[idx]) is not None
+            idx for idx in df.index[base_mask]
+            if which_fs_on_date(df.loc[idx]) is not None
         ]
 
         if not candidates_idx:
+            assumptions.append(
+                f"SMPW [{smpw_date}]: 0 delegates assigned (cap={daily_cap}) "
+                f"— no eligible groups have FS scheduled on this date."
+            )
             continue
 
         candidates = df.loc[candidates_idx].copy()
 
-        # ----------------------------------------------------------------
-        # Bus-efficiency targeting:
-        # For each stop, calculate how many delegates are going to FS on
-        # this date. If the leftover after filling buses is under bus_min,
-        # those groups are the primary targets.
-        # ----------------------------------------------------------------
-        priority_idx: list[int] = []
-        secondary_idx: list[int] = []
-
-        # Build stop -> total FS delegates on this date (from non-SMPW groups)
+        # --- Bus-efficiency targeting ------------------------------------
+        # Build stop → total FS delegates scheduled on this date
         stop_totals: dict[str, int] = {}
-        for _, row in df.iterrows():
-            if row.get("smpw_date") is not None:
+        for idx2, row2 in df.iterrows():
+            if row2.get("smpw_date") is not None:
                 continue
-            stop = row.get("TransportStop")
+            stop = row2.get("TransportStop")
             if pd.isna(stop) or stop == "NOT AVAILABLE":
                 continue
-            # Check if this group has any FS scheduled on this date
             for col in [fs1_col, fs2_col]:
-                if col in df.columns and pd.notna(row.get(col)):
-                    act_date = row[col]
-                    if isinstance(act_date, date) and act_date == smpw_date:
-                        stop_totals[stop] = stop_totals.get(stop, 0) + int(row["GroupSize"])
+                if col in df.columns and row2.get(col) == smpw_date:
+                    stop_totals[stop] = stop_totals.get(stop, 0) + int(row2["GroupSize"])
 
-        # For each stop, find the leftover that would cause under-minimum
-        stops_with_leftover: dict[str, int] = {}
+        stops_with_leftover: set[str] = set()
         for stop, total in stop_totals.items():
-            if total == 0:
-                continue
             leftover = total % bus_max
             if 0 < leftover < bus_min:
-                stops_with_leftover[stop] = leftover
+                stops_with_leftover.add(stop)
 
-        # Priority: candidates from stops with a leftover problem, smallest size first
+        priority_idx: list[int] = []
+        secondary_idx: list[int] = []
         for idx in candidates_idx:
-            row = df.loc[idx]
-            stop = row.get("TransportStop")
+            stop = df.loc[idx, "TransportStop"]
             if stop in stops_with_leftover:
                 priority_idx.append(idx)
             else:
                 secondary_idx.append(idx)
 
-        # Sort priority candidates: prefer smaller groups (easier to hit exact leftover)
+        # Sort each tier smallest-first for tight greedy cap-filling
         priority_idx.sort(key=lambda i: df.loc[i, "GroupSize"])
         secondary_idx.sort(key=lambda i: df.loc[i, "GroupSize"])
-
         ordered_candidates = priority_idx + secondary_idx
 
+        # --- Greedy fill -------------------------------------------------
+        # Try every candidate; skip only if it would bust the cap.
+        # Do NOT stop early — smaller groups later may still fit.
         for idx in ordered_candidates:
             if delegates_used >= daily_cap:
                 break
-            row = df.loc[idx]
-            group_size = int(row["GroupSize"])
+            group_size = int(df.loc[idx, "GroupSize"])
             if delegates_used + group_size > daily_cap:
-                continue  # skip groups that would bust the cap
+                continue  # too big right now; keep trying smaller ones
 
-            fulfills = which_fs(row)
+            fulfills = which_fs_on_date(df.loc[idx])
             if fulfills is None:
                 continue
 
             df.at[idx, "smpw_date"] = smpw_date
             df.at[idx, "smpw_fulfills"] = fulfills
-
-            # Mark the FS requirement as fulfilled in the req_ column
-            fs_col = "req_Field Service 1" if fulfills == "Field Service 1" else "req_Field Service 2"
-            if fs_col in df.columns:
-                df.at[idx, fs_col] = smpw_date  # date counts as assignment
-
+            # FS col already has smpw_date — no change needed
             delegates_used += group_size
             total_assigned += 1
             total_delegates += group_size
@@ -198,7 +160,6 @@ def assign_smpw(
 
 
 def build_smpw_summary(df: pd.DataFrame) -> pd.DataFrame:
-    """Return a summary DataFrame of all SMPW-assigned groups."""
     smpw = df[df["smpw_date"].notna()].copy()
     if smpw.empty:
         return pd.DataFrame(columns=[

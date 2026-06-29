@@ -379,13 +379,27 @@ input[type=number] { -moz-appearance:textfield; }
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
       <div class="mode-card" onclick="selectMode('basic')">
-        <div style="font-size:34px;margin-bottom:14px">⚡</div>
+        <div style="margin-bottom:14px">
+          <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="3" y="24" width="9" height="13" rx="2" fill="#015480" opacity=".45"/>
+            <rect x="16" y="15" width="9" height="22" rx="2" fill="#015480" opacity=".7"/>
+            <rect x="29" y="5" width="9" height="32" rx="2" fill="#015480"/>
+          </svg>
+        </div>
         <div class="mode-card-title">Basic</div>
         <div class="mode-card-desc">Quick feasibility check. Enter population and activity schedule to see how many delegates can attend FS1, FS2, and EG. No hotel or bus data needed.</div>
         <div class="mode-card-tag">2 steps</div>
       </div>
       <div class="mode-card" onclick="selectMode('detailed')">
-        <div style="font-size:34px;margin-bottom:14px">🔬</div>
+        <div style="margin-bottom:14px">
+          <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="2" y="2" width="36" height="36" rx="3" stroke="#015480" stroke-width="2.5" fill="none"/>
+            <line x1="2" y1="12" x2="38" y2="12" stroke="#015480" stroke-width="2"/>
+            <line x1="14" y1="12" x2="14" y2="38" stroke="#015480" stroke-width="2"/>
+            <line x1="2" y1="23" x2="38" y2="23" stroke="#015480" stroke-width="1.5" opacity=".4"/>
+            <line x1="2" y1="32" x2="38" y2="32" stroke="#015480" stroke-width="1.5" opacity=".4"/>
+          </svg>
+        </div>
         <div class="mode-card-title">Detailed</div>
         <div class="mode-card-desc">Full logistics simulation. Hotels, bus routing, scheduling rules, and complete pipeline. Use when you're ready to model a real city and venue.</div>
         <div class="mode-card-tag">7 steps</div>
@@ -546,6 +560,10 @@ let currentStage = 0;
 let pipelineResult = null;
 let chatHistory = [];
 let chatStreaming = false;
+let basicChatHistory = [];
+let basicChatStreaming = false;
+let basicFeasibilityContext = null; // populated by showBasicResults
+let savedBasicRuns = [];            // saved feasibility snapshots for comparison
 
 const STAGES = [
   { id: 'population', label: 'Population' },
@@ -2614,18 +2632,35 @@ const BASIC_STAGES = [
   { id: 'activities', label: 'Activities' },
 ];
 
+const FS_DAYS     = [2, 3, 4, 5, 6, 10, 11]; // fixed — not user-editable
+const DAY_DOW     = ['Sat','Sun','Mon','Tue','Wed','Thu','Fri','Sat','Sun','Mon','Tue','Wed'];
+const BASIC_BLOCKED = new Set([7, 8, 9]);
+
+function defaultEGSchedule() {
+  const sched = {};
+  for (let d = 1; d <= 12; d++) {
+    if (!BASIC_BLOCKED.has(d)) {
+      sched[d] = {
+        show1: { enabled: false, min: '', max: '' },
+        show2: { enabled: false, min: '', max: '' },
+      };
+    }
+  }
+  return sched;
+}
+
 const dataBasic = {
   seed: 42,
   population: {},
+  smpwTotal: 0,
+  fsDayLimits: {},   // { 2: {min:'', max:''}, 3: {...}, ... }
+  fsFineTune: false,
+  egSchedule: defaultEGSchedule(),
   activities: [
-    { name: 'Field Service 1',   slug: 'fs1', days: [] },
-    { name: 'Field Service 2',   slug: 'fs2', days: [] },
-    { name: 'Evening Gathering', slug: 'eg',  days: [], sessionsPerDay: 2 },
+    { name: 'Field Service',     slug: 'fs', days: FS_DAYS },
+    { name: 'Evening Gathering', slug: 'eg', days: [] },
   ],
 };
-
-const DAY_DOW = ['Sat','Sun','Mon','Tue','Wed','Thu','Fri','Sat','Sun','Mon','Tue','Wed'];
-const BASIC_BLOCKED = new Set([7, 8, 9]);
 
 // ---- Mode selection ----
 
@@ -2988,7 +3023,7 @@ function validateBasicPopulation() {
 // ---- Step 2: Activities ----
 
 function renderBasicActivities() {
-  const acts = dataBasic.activities;
+  const eg = dataBasic.activities.find(a => a.slug === 'eg');
 
   function dayGrid(slug, savedDays) {
     const saved = new Set(savedDays || []);
@@ -3008,39 +3043,164 @@ function renderBasicActivities() {
   document.getElementById('basic-stage-container').innerHTML = `
   <div class="stage-card">
     <div class="stage-title">Step 2 — Activities</div>
-    <div class="stage-desc">Select which days each mandatory activity runs. Days 7–9 (Fri–Sun of the second week) are always blocked. Delegates cannot attend on their check-in or checkout day.</div>
+    <div class="stage-desc">Configure Field Service and Evening Gathering. Days 7–9 (Fri–Sun) are blocked. Delegates cannot attend on their check-in or checkout day.</div>
 
-    ${acts.map(act => `
-      <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px;background:var(--surface2)">
-        <div style="font-size:14px;font-weight:700;margin-bottom:14px">${esc(act.name)}</div>
-        ${act.slug === 'eg' ? `
-          <div class="field" style="margin-bottom:14px">
-            <label>Sessions per day <span style="color:var(--muted);font-weight:400">(e.g. 2 = EG AM + EG PM on same day)</span></label>
-            <input type="number" id="b-eg-sessions" min="1" max="10" value="${act.sessionsPerDay || 2}" style="width:80px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm)">
-          </div>` : ''}
-        <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:6px">Available days</div>
-        ${dayGrid(act.slug, act.days)}
+    <!-- Field Service — fixed days -->
+    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px;background:var(--surface2)">
+      <div style="font-size:14px;font-weight:700;margin-bottom:4px">Field Service (FS1 &amp; FS2)</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Fixed days: Day 2–6 (Sun–Thu of week 1) and Day 10–11 (Mon–Tue of week 2)</div>
+      <div class="field" style="margin-bottom:16px">
+        <label>SMPW delegate-slots per day <span style="color:var(--error)">*</span> <span style="color:var(--muted);font-weight:400">(per FS day — these delegates do FS without a congregation)</span></label>
+        ${numCtrl(dataBasic.smpwTotal !== '' && dataBasic.smpwTotal != null ? dataBasic.smpwTotal : '', {id:'b-smpw-total', min:0, ph:'Required', wide:true})}
       </div>
-    `).join('')}
+      <div>
+        <button type="button" onclick="toggleFSFineTune()" id="b-fs-finetune-toggle"
+          style="display:flex;align-items:center;gap:6px;background:none;border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 12px;font-size:12px;font-weight:600;color:var(--accent);cursor:pointer;transition:all .15s">
+          <span id="b-fs-finetune-arrow">${dataBasic.fsFineTune ? '▾' : '▸'}</span>
+          Fine-tune daily delegate limits
+        </button>
+        <div id="b-fs-finetune-panel" style="display:${dataBasic.fsFineTune ? 'block' : 'none'};margin-top:12px">
+          <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Set min/max delegates per FS day. Leave blank for no limit. Results will flag days outside the range.</div>
+          <table class="result-table" style="max-width:480px;font-size:12px">
+            <thead><tr><th>Day</th><th>Day of Week</th><th>Min delegates</th><th>Max delegates</th></tr></thead>
+            <tbody>
+              ${FS_DAYS.map(d => {
+                const lim = dataBasic.fsDayLimits[d] || {};
+                return `<tr>
+                  <td>Day ${d}</td>
+                  <td>${DAY_DOW[d-1]}</td>
+                  <td><input type="number" class="b-fs-min" data-day="${d}" min="0" placeholder="—"
+                    value="${lim.min ?? ''}"
+                    style="width:90px;padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px"></td>
+                  <td><input type="number" class="b-fs-max" data-day="${d}" min="0" placeholder="—"
+                    value="${lim.max ?? ''}"
+                    style="width:90px;padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px"></td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Evening Gathering — per-day show configuration -->
+    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px;background:var(--surface2)">
+      <div style="font-size:14px;font-weight:700;margin-bottom:4px">Evening Gathering</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Enable each show per day and enter min/max attendance. Days 7–9 are always blocked.</div>
+      <div style="overflow-x:auto">
+        <table class="result-table" style="font-size:12px;min-width:580px">
+          <thead>
+            <tr>
+              <th rowspan="2" style="vertical-align:bottom">Day</th>
+              <th rowspan="2" style="vertical-align:bottom">DOW</th>
+              <th colspan="3" style="text-align:center;background:var(--surface3);border-bottom:1px solid var(--border)">1st Show</th>
+              <th colspan="3" style="text-align:center;background:var(--surface3);border-bottom:1px solid var(--border);border-left:2px solid var(--border-light)">2nd Show</th>
+            </tr>
+            <tr>
+              <th style="font-weight:500">On?</th><th style="font-weight:500">Min</th><th style="font-weight:500">Max</th>
+              <th style="font-weight:500;border-left:2px solid var(--border-light)">On?</th><th style="font-weight:500">Min</th><th style="font-weight:500">Max</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${Array.from({length:12}, (_,i)=>i+1).map(d => {
+              if (BASIC_BLOCKED.has(d)) {
+                return `<tr style="color:var(--muted2);background:#f8f9fa">
+                  <td>Day ${d}</td><td>${DAY_DOW[d-1]}</td>
+                  <td colspan="6" style="text-align:center;font-style:italic;font-size:11px">Blocked — no activities</td>
+                </tr>`;
+              }
+              const day  = (dataBasic.egSchedule || {})[d] || { show1:{enabled:false,min:'',max:''}, show2:{enabled:false,min:'',max:''} };
+              const s1 = day.show1, s2 = day.show2;
+              const inp = (cls, show, field, val, dis) =>
+                `<input type="number" class="${cls}" data-day="${d}" data-show="${show}" data-field="${field}"
+                  min="0" placeholder="—" value="${val??''}" ${dis?'disabled':''}
+                  style="width:76px;padding:4px 6px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;${dis?'opacity:.4':''}">`;
+              return `<tr>
+                <td>Day ${d}</td><td>${DAY_DOW[d-1]}</td>
+                <td style="text-align:center">
+                  <input type="checkbox" class="eg-show-cb" data-day="${d}" data-show="1" ${s1.enabled?'checked':''}
+                    onchange="onEGShowToggle(${d},1,this.checked)" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer">
+                </td>
+                <td>${inp('eg-show-inp',1,'min',s1.min,!s1.enabled)}</td>
+                <td>${inp('eg-show-inp',1,'max',s1.max,!s1.enabled)}</td>
+                <td style="border-left:2px solid var(--border-light);text-align:center">
+                  <input type="checkbox" class="eg-show-cb" data-day="${d}" data-show="2" ${s2.enabled?'checked':''}
+                    onchange="onEGShowToggle(${d},2,this.checked)" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer">
+                </td>
+                <td>${inp('eg-show-inp',2,'min',s2.min,!s2.enabled)}</td>
+                <td>${inp('eg-show-inp',2,'max',s2.max,!s2.enabled)}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
   </div>`;
 }
 
-function saveBasicActivities() {
-  dataBasic.activities.forEach(act => {
-    const container = document.getElementById(`b-act-days-${act.slug}`);
-    if (container) {
-      act.days = [...container.querySelectorAll('input[type=checkbox]:checked')].map(cb => parseInt(cb.value));
-    }
-    if (act.slug === 'eg') {
-      act.sessionsPerDay = parseInt(document.getElementById('b-eg-sessions')?.value) || 2;
-    }
+function onEGShowToggle(day, show, enabled) {
+  const key = `eg-show-inp`;
+  document.querySelectorAll(`.${key}[data-day="${day}"][data-show="${show}"]`).forEach(el => {
+    el.disabled = !enabled;
+    el.style.opacity = enabled ? '' : '.4';
   });
 }
 
-function validateBasicActivities() {
-  for (const act of dataBasic.activities) {
-    if (!act.days.length) return `"${act.name}" has no days selected — check at least one available day.`;
+function toggleFSFineTune() {
+  dataBasic.fsFineTune = !dataBasic.fsFineTune;
+  document.getElementById('b-fs-finetune-panel').style.display = dataBasic.fsFineTune ? 'block' : 'none';
+  document.getElementById('b-fs-finetune-arrow').textContent  = dataBasic.fsFineTune ? '▾' : '▸';
+}
+
+function saveBasicActivities() {
+  dataBasic.smpwTotal  = parseInt(document.getElementById('b-smpw-total')?.value) || 0;
+  dataBasic.fsFineTune = document.getElementById('b-fs-finetune-panel')?.style.display !== 'none';
+
+  // FS per-day limits
+  dataBasic.fsDayLimits = {};
+  document.querySelectorAll('.b-fs-min').forEach(el => {
+    const d = parseInt(el.dataset.day);
+    if (!dataBasic.fsDayLimits[d]) dataBasic.fsDayLimits[d] = {};
+    const v = el.value.trim();
+    dataBasic.fsDayLimits[d].min = v !== '' ? parseInt(v) : '';
+  });
+  document.querySelectorAll('.b-fs-max').forEach(el => {
+    const d = parseInt(el.dataset.day);
+    if (!dataBasic.fsDayLimits[d]) dataBasic.fsDayLimits[d] = {};
+    const v = el.value.trim();
+    dataBasic.fsDayLimits[d].max = v !== '' ? parseInt(v) : '';
+  });
+
+  // EG per-day show schedule
+  dataBasic.egSchedule = dataBasic.egSchedule || defaultEGSchedule();
+  document.querySelectorAll('.eg-show-cb').forEach(cb => {
+    const d = parseInt(cb.dataset.day), s = cb.dataset.show;
+    const key = s === '1' ? 'show1' : 'show2';
+    if (!dataBasic.egSchedule[d]) dataBasic.egSchedule[d] = { show1:{enabled:false,min:'',max:''}, show2:{enabled:false,min:'',max:''} };
+    dataBasic.egSchedule[d][key].enabled = cb.checked;
+  });
+  document.querySelectorAll('.eg-show-inp').forEach(inp => {
+    const d = parseInt(inp.dataset.day), s = inp.dataset.show, f = inp.dataset.field;
+    const key = s === '1' ? 'show1' : 'show2';
+    if (!dataBasic.egSchedule[d]) dataBasic.egSchedule[d] = { show1:{enabled:false,min:'',max:''}, show2:{enabled:false,min:'',max:''} };
+    const v = inp.value.trim();
+    dataBasic.egSchedule[d][key][f] = v !== '' ? parseInt(v) : '';
+  });
+
+  // Derive EG active days for the feasibility simulation
+  const eg = dataBasic.activities.find(a => a.slug === 'eg');
+  if (eg) {
+    eg.days = Object.entries(dataBasic.egSchedule)
+      .filter(([, day]) => day.show1.enabled || day.show2.enabled)
+      .map(([d]) => parseInt(d));
   }
+}
+
+function validateBasicActivities() {
+  const smpwEl = document.getElementById('b-smpw-total');
+  if (!smpwEl || smpwEl.value.trim() === '') return 'SMPW delegate-slots is required — enter a number (use 0 if none).';
+  const eg = dataBasic.activities.find(a => a.slug === 'eg');
+  if (!eg || !eg.days.length) return 'Enable at least one Evening Gathering show on at least one day.';
   return null;
 }
 
@@ -3086,107 +3246,977 @@ function runFeasibility() {
     ? Math.round((p.count || 0) * avgSize)
     : (p.count || 0);
 
-  // Simulate groups
+  // Simulate groups; clamp last group so total never exceeds entered delegate count.
+  // Enforce same rule as Detailed version: checkout must be Day 10 or later (delegates
+  // must stay through the convention core days 7-9). If the sampled checkin+nights pair
+  // would checkout before Day 10, slide checkin forward to the earliest valid day for
+  // that LOS so the constraint is met without distorting the stay-length distribution.
+  const CORE_END = 9; // last blocked/core day; checkout must be > CORE_END (i.e. >= 10)
   const groups = [];
   let delegateCount = 0;
   while (delegateCount < totalDelegates) {
-    const size     = sample(gsdDist);
-    const checkin  = sample(arrDist);                   // Day 1–5
-    const nights   = sample(losDist);
-    const checkout = Math.min(13, checkin + nights);    // morning after last night
+    let size    = sample(gsdDist);
+    let checkin = sample(arrDist);
+    const nights = sample(losDist);
+    // Enforce: checkin + nights >= CORE_END + 1  →  checkin >= CORE_END + 1 - nights
+    const minCheckin = Math.max(1, CORE_END + 1 - nights);
+    if (checkin < minCheckin) checkin = minCheckin;
+    // Latest allowed checkin is Day 6 (so delegates are on-site before core days)
+    if (checkin > 6) checkin = 6;
+    const checkout = Math.min(13, checkin + nights);
+    if (delegateCount + size > totalDelegates) size = totalDelegates - delegateCount;
     groups.push({ size, checkin, checkout });
     delegateCount += size;
   }
+  window._basicGroups = groups; // expose for scheduling phase
 
   // Per-activity feasibility
-  const results = dataBasic.activities.map(act => {
+  // timesPerDelegate: how many times each delegate must attend (FS=2 because every delegate does FS1 AND FS2)
+  function computeActivity(act, timesPerDelegate = 1) {
     const actDays = new Set(act.days);
-    const sessions = act.sessionsPerDay || 1;
     let miss = 0;
     const demand = {};
     for (let d = 1; d <= 12; d++) demand[d] = 0;
-
     for (const grp of groups) {
       const feasible = [];
       for (let d = grp.checkin + 1; d <= grp.checkout - 1; d++) {
         if (d >= 1 && d <= 12 && !BASIC_BLOCKED.has(d) && actDays.has(d)) feasible.push(d);
       }
-      if (feasible.length === 0) {
-        miss += grp.size;
-      } else {
-        const share = grp.size / feasible.length;
+      if (feasible.length === 0) { miss += grp.size; }
+      else {
+        const share = (grp.size * timesPerDelegate) / feasible.length;
         feasible.forEach(d => { demand[d] += share; });
       }
     }
+    return { name: act.name, slug: act.slug, miss, total: delegateCount, demand, sessions: act.sessionsPerDay || 1, actDays };
+  }
 
-    return { name: act.name, slug: act.slug, miss, total: delegateCount, demand, sessions, actDays };
-  });
+  // Daily on-site availability (delegates present and not on check-in or checkout day)
+  const dailyAvail = {};
+  for (let d = 1; d <= 12; d++) {
+    let onSite = 0;
+    for (const grp of groups) {
+      if (grp.checkin < d && grp.checkout > d) onSite += grp.size;
+    }
+    dailyAvail[d] = delegateCount > 0 ? Math.round(100 * onSite / delegateCount) : 0;
+  }
 
-  showBasicResults(results, delegateCount);
+  const fsAct  = dataBasic.activities.find(a => a.slug === 'fs');
+  const egAct  = dataBasic.activities.find(a => a.slug === 'eg');
+  const fsResult = computeActivity(fsAct, 2); // each delegate does both FS1 and FS2
+  const egResult = computeActivity(egAct, 1);
+  const totalFSDemand = Object.values(fsResult.demand).reduce((s, v) => s + v, 0);
+
+  showBasicResults(fsResult, egResult, delegateCount, dataBasic.smpwTotal || 0, totalFSDemand, dailyAvail);
 }
 
-function showBasicResults(results, totalDelegates) {
+function showBasicResults(fsResult, egResult, totalDelegates, smpwTotal, totalFSDemand, dailyAvail) {
   document.getElementById('basic-wizard').style.display = 'none';
   const resultsDiv = document.getElementById('basic-results');
   resultsDiv.classList.add('visible');
 
-  const summaryChips = results.map(r => {
-    const cls   = r.miss > 0 ? 'feas-badge-miss' : 'feas-badge-ok';
-    const label = r.miss > 0
-      ? `${r.miss.toLocaleString()} miss ${r.name}`
-      : `All attend ${r.name}`;
-    return `<span class="${cls}">${label}</span>`;
+  // ---- Field Service table ----
+  const limits = dataBasic.fsDayLimits || {};
+  const hasLimits = Object.keys(limits).some(d => limits[d].min !== '' || limits[d].max !== '');
+  let totalCong = 0, totalVol = 0, totalMinFS = 0, totalSmpw = 0, totalNonSmpw = 0;
+  let totalFeasibleFS = 0, totalGapFS = 0;
+  const fsRows = Array.from({length: 12}, (_, i) => i + 1).map(d => {
+    const blocked = BASIC_BLOCKED.has(d);
+    const runs    = FS_DAYS.includes(d);
+    const minFS   = runs && !blocked ? Math.ceil(fsResult.demand[d] || 0) : 0;
+    const smpwDay = runs && !blocked ? Math.min(minFS, smpwTotal) : 0;
+    const nonSmpw = Math.max(0, minFS - smpwDay);
+    const cong    = runs && !blocked ? Math.ceil(nonSmpw / 48) : 0;
+    const vol     = runs && !blocked ? Math.ceil(minFS * 2.25) : 0;
+
+    const lim = limits[d] || {};
+    const limMin = lim.min !== '' && lim.min != null ? Number(lim.min) : null;
+    const limMax = lim.max !== '' && lim.max != null ? Number(lim.max) : null;
+    const feasibleFS = runs && !blocked ? (limMax !== null ? Math.min(minFS, limMax) : minFS) : 0;
+    const gapFS      = runs && !blocked ? Math.max(0, minFS - feasibleFS) : 0;
+
+    if (runs && !blocked) {
+      totalCong += cong; totalVol += vol;
+      totalMinFS += minFS; totalSmpw += smpwDay; totalNonSmpw += nonSmpw;
+      totalFeasibleFS += feasibleFS; totalGapFS += gapFS;
+    }
+
+    let statusCell = '';
+    let rowStyle = blocked ? 'color:var(--muted2);background:#f8f9fa' : !runs ? 'color:var(--muted2)' : '';
+    if (runs && !blocked && hasLimits) {
+      if (limMax !== null && minFS > limMax) {
+        statusCell = `<td style="color:#c0392b;font-weight:600">⚠ Over (${limMax.toLocaleString()})</td><td style="color:#c0392b;font-weight:600">${gapFS.toLocaleString()}</td>`;
+        rowStyle = 'background:#fdf0ef';
+      } else if (limMin !== null && minFS < limMin) {
+        statusCell = `<td style="color:#b7600a;font-weight:600">⚠ Under min</td><td>—</td>`;
+        rowStyle = 'background:#fef9ec';
+      } else if (limMin !== null || limMax !== null) {
+        statusCell = `<td style="color:#1a7a4a;font-weight:600">✓ OK</td><td>—</td>`;
+      } else {
+        statusCell = `<td>—</td><td>—</td>`;
+      }
+    }
+
+    const dash = '—';
+    return `<tr style="${rowStyle}">
+      <td>Day ${d}</td><td>${DAY_DOW[d-1]}</td>
+      <td>${blocked ? '<span style="color:var(--muted2)">Blocked</span>' : runs ? 'Yes' : 'No'}</td>
+      <td>${blocked||!runs?dash:minFS.toLocaleString()}</td>
+      <td>${blocked||!runs?dash:feasibleFS.toLocaleString()}</td>
+      <td>${blocked||!runs?dash:(gapFS>0?`<span style="color:#c0392b;font-weight:600">${gapFS.toLocaleString()}</span>`:dash)}</td>
+      <td>${blocked||!runs?dash:smpwDay.toLocaleString()}</td>
+      <td>${blocked||!runs?dash:nonSmpw.toLocaleString()}</td>
+      <td>${blocked||!runs?dash:cong.toLocaleString()}</td>
+      <td>${blocked||!runs?dash:vol.toLocaleString()}</td>
+      ${hasLimits ? (blocked||!runs ? '<td>—</td><td>—</td>' : statusCell) : ''}
+    </tr>`;
+  }).join('');
+
+  const fsPct = totalMinFS > 0 ? Math.round(100 * totalFeasibleFS / totalMinFS) : 100;
+  const fsTotalsRow = `<tr style="font-weight:700;border-top:2px solid var(--border);background:var(--surface2)">
+    <td colspan="3">Totals</td>
+    <td>${totalMinFS.toLocaleString()}</td>
+    <td>${totalFeasibleFS.toLocaleString()}</td>
+    <td>${totalGapFS > 0 ? `<span style="color:#c0392b">${totalGapFS.toLocaleString()}</span>` : '—'}</td>
+    <td>${totalSmpw.toLocaleString()}</td>
+    <td>${totalNonSmpw.toLocaleString()}</td>
+    <td>${totalCong.toLocaleString()}</td>
+    <td>${totalVol.toLocaleString()}</td>
+    ${hasLimits ? '<td>—</td><td>—</td>' : ''}
+  </tr>`;
+
+  // ---- EG table ----
+  const egSched = dataBasic.egSchedule || {};
+  let totalPotentialEG = 0, totalFeasibleEG = 0;
+  const egRows = Array.from({length: 12}, (_, i) => i + 1).map(d => {
+    const blocked  = BASIC_BLOCKED.has(d);
+    const daySched = egSched[d] || { show1:{enabled:false,min:'',max:''}, show2:{enabled:false,min:'',max:''} };
+    const s1 = daySched.show1, s2 = daySched.show2;
+    const anyOn = !blocked && (s1.enabled || s2.enabled);
+    const totalDemand = anyOn ? Math.ceil(egResult.demand[d] || 0) : 0;
+
+    const shows = [s1.enabled, s2.enabled].filter(Boolean).length || 1;
+    const demS1 = s1.enabled ? Math.ceil(totalDemand / shows) : 0;
+    const demS2 = s2.enabled ? totalDemand - demS1 : 0;
+
+    function showCells(enabled, dem, sMin, sMax) {
+      if (!enabled) return '<td colspan="4" style="color:var(--muted2);text-align:center">Off</td>';
+      const minV = sMin !== '' && sMin != null ? Number(sMin) : null;
+      const maxV = sMax !== '' && sMax != null ? Number(sMax) : null;
+      const feasible = maxV !== null ? Math.min(dem, maxV) : dem;
+      const gap = Math.max(0, dem - feasible);
+      totalPotentialEG += dem;
+      totalFeasibleEG  += feasible;
+      let status = '';
+      if (maxV !== null && dem > maxV)      status = `<span style="color:#c0392b;font-weight:600">⚠ Over (${maxV.toLocaleString()})</span>`;
+      else if (minV !== null && dem < minV) status = `<span style="color:#b7600a;font-weight:600">⚠ Under (${minV.toLocaleString()})</span>`;
+      else if (minV !== null || maxV !== null) status = `<span style="color:#1a7a4a;font-weight:600">✓</span>`;
+      return `<td>${dem.toLocaleString()}</td>
+              <td>${feasible < dem ? `<strong style="color:#1a7a4a">${feasible.toLocaleString()}</strong>` : feasible.toLocaleString()}</td>
+              <td>${gap > 0 ? `<span style="color:#c0392b;font-weight:600">${gap.toLocaleString()}</span>` : '—'}</td>
+              <td style="font-size:11px;color:var(--muted)">${status}</td>`;
+    }
+
+    if (blocked) {
+      return `<tr style="color:var(--muted2);background:#f8f9fa">
+        <td>Day ${d}</td><td>${DAY_DOW[d-1]}</td>
+        <td colspan="8" style="text-align:center;font-style:italic;font-size:11px">Blocked</td>
+      </tr>`;
+    }
+    if (!anyOn) {
+      return `<tr style="color:var(--muted2)">
+        <td>Day ${d}</td><td>${DAY_DOW[d-1]}</td>
+        <td colspan="8" style="text-align:center">No shows scheduled</td>
+      </tr>`;
+    }
+    return `<tr>
+      <td>Day ${d}</td><td>${DAY_DOW[d-1]}</td>
+      ${showCells(s1.enabled, demS1, s1.min, s1.max)}
+      ${showCells(s2.enabled, demS2, s2.min, s2.max)}
+    </tr>`;
+  }).join('');
+
+  const egPct = totalPotentialEG > 0 ? Math.round(100 * totalFeasibleEG / totalPotentialEG) : 100;
+
+  const egGap = totalPotentialEG - totalFeasibleEG;
+
+  function actBadge(miss, gap, name) {
+    if (miss > 0 && gap > 0)
+      return `<span class="feas-badge-miss">${miss.toLocaleString()} no feasible day · ${gap.toLocaleString()} slots exceed caps</span>`;
+    if (miss > 0)
+      return `<span class="feas-badge-miss">${miss.toLocaleString()} delegates have no feasible day</span>`;
+    if (gap > 0)
+      return `<span class="feas-badge-miss">${gap.toLocaleString()} slots exceed caps — not all delegates can attend</span>`;
+    return `<span class="feas-badge-ok">All delegates can attend within caps</span>`;
+  }
+
+  const fsBadge = actBadge(fsResult.miss, totalGapFS, 'Field Service');
+  const egBadge = actBadge(egResult.miss, egGap, 'Evening Gathering');
+
+  // Store snapshot for Save Run
+  window._basicRunSnapshot = {
+    totalDelegates, smpwTotal,
+    fs: { potential: totalMinFS, feasible: totalFeasibleFS, gap: totalGapFS, miss: fsResult.miss, pct: fsPct, demandByDay: fsResult.demand },
+    eg: { potential: totalPotentialEG, feasible: totalFeasibleEG, gap: egGap, miss: egResult.miss, pct: egPct },
+    dailyAvail,
+    populationSummary: `${(dataBasic.population.count||0).toLocaleString()} delegates · seed ${dataBasic.seed}`,
+  };
+
+  const chips = [
+    { miss: fsResult.miss, gap: totalGapFS,  name: 'Field Service' },
+    { miss: egResult.miss, gap: egGap,        name: 'Evening Gathering' },
+  ].map(({ miss, gap, name }) => {
+    const bad = miss > 0 || gap > 0;
+    const label = bad
+      ? (miss > 0 && gap > 0 ? `${name}: misses + cap overages`
+        : miss > 0 ? `${miss.toLocaleString()} miss ${name}`
+        : `${gap.toLocaleString()} slots over cap — ${name}`)
+      : `All attend ${name} within caps`;
+    return `<span class="${bad ? 'feas-badge-miss' : 'feas-badge-ok'}">${label}</span>`;
   }).join('');
 
   resultsDiv.innerHTML = `
     <div class="results-header">
       <h2>Feasibility Analysis</h2>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn" style="background:var(--accent);color:#fff;border:none" onclick="saveBasicRun()">Save Run</button>
+        <button class="btn" style="background:#1a7a4a;color:#fff;border:none" onclick="runBasicSchedule()">▶ Run Schedule</button>
         <button class="btn btn-secondary" onclick="backToBasicWizard()">Back to Activities</button>
         <button class="btn-restart" onclick="restart()">Start over</button>
       </div>
     </div>
 
-    <div class="result-section" style="border-left:3px solid var(--accent);padding-left:16px;background:var(--surface2);border-radius:0 var(--radius-sm) var(--radius-sm) 0;padding:14px 14px 14px 18px">
+    <div id="b-compare-section"></div>
+
+    <div class="result-section" style="border-left:3px solid var(--accent);background:var(--surface2);border-radius:0 var(--radius-sm) var(--radius-sm) 0;padding:14px 14px 14px 18px">
       <div style="font-size:13px;color:var(--muted);margin-bottom:10px">
         <strong style="color:var(--text)">${totalDelegates.toLocaleString()}</strong> total delegates simulated &nbsp;·&nbsp;
-        Best-case: delegates spread optimally across all feasible days
+        Best-case: delegates spread optimally across feasible days
       </div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px">${summaryChips}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">${chips}</div>
     </div>
 
-    ${results.map(act => {
-      const badge = act.miss > 0
-        ? `<span class="feas-badge-miss">${act.miss.toLocaleString()} delegates cannot attend</span>`
-        : `<span class="feas-badge-ok">All delegates can attend</span>`;
-      const hasSession = act.sessions > 1;
-      const sessionHeader = hasSession ? `<th>Per session (÷${act.sessions})</th>` : '';
+    <div class="result-section" style="background:var(--surface2);border-radius:var(--radius)">
+      <h3 style="margin-bottom:14px">Feasibility vs Potential</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        ${(()=>{
+          const fsColor = totalGapFS > 0 ? '#c0392b' : '#1a7a4a';
+          const egColor = (totalPotentialEG - totalFeasibleEG) > 0 ? '#c0392b' : '#1a7a4a';
+          function card(label, potential, feasible, pct, color) {
+            const gap = potential - feasible;
+            return `<div style="background:white;border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px">
+              <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:10px">${label}</div>
+              <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px">
+                <span style="color:var(--muted)">Potential (demand)</span>
+                <strong>${potential.toLocaleString()}</strong>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px">
+                <span style="color:var(--muted)">Feasible (within caps)</span>
+                <strong style="color:${color}">${feasible.toLocaleString()}</strong>
+              </div>
+              ${gap > 0 ? `<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:8px">
+                <span style="color:#c0392b">Gap (over cap)</span>
+                <strong style="color:#c0392b">${gap.toLocaleString()}</strong>
+              </div>` : ''}
+              <div style="background:#eee;border-radius:99px;height:6px;margin-top:8px;overflow:hidden">
+                <div style="background:${color};height:6px;width:${pct}%;border-radius:99px;transition:width .4s"></div>
+              </div>
+              <div style="font-size:11px;color:${color};font-weight:600;margin-top:4px;text-align:right">${pct}% feasible</div>
+            </div>`;
+          }
+          const egGap = totalPotentialEG - totalFeasibleEG;
+          return card('Field Service (FS1 + FS2)', totalMinFS, totalFeasibleFS, fsPct, fsColor)
+               + card('Evening Gathering', totalPotentialEG, totalFeasibleEG, egPct, egColor);
+        })()}
+      </div>
+    </div>
 
-      const rows = Array.from({length: 12}, (_, i) => i + 1).map(d => {
-        const blocked  = BASIC_BLOCKED.has(d);
-        const runs     = act.actDays.has(d);
-        const minAtt   = runs && !blocked ? Math.ceil(act.demand[d] || 0) : 0;
-        const perSess  = hasSession && minAtt > 0 ? Math.ceil(minAtt / act.sessions) : 0;
-        const dimStyle = blocked ? 'color:var(--muted2);background:#f8f9fa' : '';
-        return `<tr style="${dimStyle}">
-          <td>Day ${d}</td>
-          <td>${DAY_DOW[d-1]}</td>
-          <td>${blocked ? '<span style="color:var(--muted2)">Blocked</span>' : runs ? 'Yes' : 'No'}</td>
-          <td>${blocked || !runs ? '—' : minAtt.toLocaleString()}</td>
-          ${hasSession ? `<td>${blocked || !runs ? '—' : perSess.toLocaleString()}</td>` : ''}
-        </tr>`;
-      }).join('');
+    <div class="result-section" id="b-avail-chart-section">
+      <h3>Guest Room Block</h3>
+      <div style="display:flex;gap:20px;align-items:center;margin-bottom:14px;font-size:12px">
+        <span style="display:flex;align-items:center;gap:6px"><span style="display:inline-block;width:14px;height:14px;background:#015480;border-radius:2px"></span> Delegate On-Site %</span>
+        <span style="display:flex;align-items:center;gap:6px"><span style="display:inline-block;width:14px;height:14px;background:#90CAF9;border-radius:2px"></span> TCO Model</span>
+      </div>
+      <canvas id="b-avail-chart" style="width:100%;max-height:260px"></canvas>
+    </div>
 
-      return `
-        <div class="result-section">
-          <h3>${esc(act.name)} <span style="margin-left:10px">${badge}</span></h3>
-          ${act.miss > 0 ? `<div style="font-size:12px;color:var(--error);margin-bottom:10px">${act.miss.toLocaleString()} delegates have no feasible day for this activity given their arrival day and length of stay.</div>` : ''}
-          <table class="result-table">
-            <thead><tr><th>Day</th><th>Day of Week</th><th>Runs?</th><th>Min. Attendance</th>${sessionHeader}</tr></thead>
-            <tbody>${rows}</tbody>
-          </table>
+    <div class="result-section">
+      <h3>Field Service (FS1 &amp; FS2 combined) <span style="margin-left:10px">${fsBadge}</span></h3>
+      ${fsResult.miss > 0 ? `<div style="font-size:12px;color:var(--error);margin-bottom:10px">${fsResult.miss.toLocaleString()} delegates have no feasible FS day given their arrival and length of stay.</div>` : ''}
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">SMPW per day entered: <strong>${smpwTotal.toLocaleString()}</strong> &nbsp;·&nbsp; Congregations = non-SMPW ÷ 48 &nbsp;·&nbsp; Volunteers = total FS × 2.25</div>
+      <div style="overflow-x:auto">
+      <table class="result-table" style="font-size:12px;min-width:780px">
+        <thead><tr>
+          <th>Day</th><th>DOW</th><th>Runs?</th>
+          <th>Potential</th><th>Feasible</th><th>Gap</th>
+          <th>SMPW</th><th>Non-SMPW</th>
+          <th>Cong.</th><th>Vol.</th>
+          ${hasLimits ? '<th>Status</th><th>—</th>' : ''}
+        </tr></thead>
+        <tbody>${fsRows}${fsTotalsRow}</tbody>
+      </table>
+      </div>
+    </div>
+
+    <div class="result-section">
+      <h3>Evening Gathering <span style="margin-left:10px">${egBadge}</span></h3>
+      ${egResult.miss > 0 ? `<div style="font-size:12px;color:var(--error);margin-bottom:10px">${egResult.miss.toLocaleString()} delegates have no feasible EG day given their arrival and length of stay.</div>` : ''}
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Demand is split evenly between enabled shows per day. Min/Max range is checked per show.</div>
+      <div style="overflow-x:auto">
+      <table class="result-table" style="font-size:12px;min-width:560px">
+        <thead>
+          <tr>
+            <th rowspan="2" style="vertical-align:bottom">Day</th>
+            <th rowspan="2" style="vertical-align:bottom">DOW</th>
+            <th colspan="4" style="text-align:center;background:var(--surface3)">1st Show</th>
+            <th colspan="4" style="text-align:center;background:var(--surface3);border-left:2px solid var(--border-light)">2nd Show</th>
+          </tr>
+          <tr>
+            <th style="font-weight:500">Potential</th><th style="font-weight:500">Feasible</th><th style="font-weight:500">Gap</th><th style="font-weight:500">Status</th>
+            <th style="font-weight:500;border-left:2px solid var(--border-light)">Potential</th><th style="font-weight:500">Feasible</th><th style="font-weight:500">Gap</th><th style="font-weight:500">Status</th>
+          </tr>
+        </thead>
+        <tbody>${egRows}</tbody>
+      </table>
+      </div>
+    </div>
+
+    <div class="result-section">
+      <h3>Delegates On-Site by Day</h3>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Delegates present and eligible for activities (excludes check-in and checkout day). Days 7–9 are blocked convention days.</div>
+      <div style="overflow-x:auto">
+      <table class="result-table" style="font-size:12px;min-width:560px">
+        <thead><tr>
+          ${Array.from({length:12},(_,i)=>`<th style="text-align:center">D${i+1}<br><span style="font-weight:400;color:var(--muted)">${DAY_DOW[i]}</span></th>`).join('')}
+        </tr></thead>
+        <tbody><tr>
+          ${Array.from({length:12},(_,i)=>{
+            const d=i+1, pct=dailyAvail[d]||0, blocked=BASIC_BLOCKED.has(d);
+            const count = Math.round(pct/100*totalDelegates);
+            if(blocked) return `<td style="text-align:center;color:var(--muted2);background:#f8f9fa;font-style:italic">—</td>`;
+            return `<td style="text-align:center"><strong>${count.toLocaleString()}</strong><br><span style="font-size:10px;color:var(--muted)">${pct}%</span></td>`;
+          }).join('')}
+        </tr></tbody>
+      </table>
+      </div>
+    </div>
+
+    <div class="chat-section">
+      <h3>Ask Claude</h3>
+      <div class="chat-sub">Discuss these feasibility results — interpret miss counts, capacity bottlenecks, scheduling trade-offs.</div>
+      <div id="b-chat-area"></div>
+    </div>`;
+
+  // Store context for Basic chat
+  basicFeasibilityContext = {
+    total_delegates: totalDelegates,
+    smpw_total: smpwTotal,
+    fs_miss: fsResult.miss,
+    eg_miss: egResult.miss,
+    fs_demand_by_day: fsResult.demand,
+    eg_demand_by_day: egResult.demand,
+    daily_avail_pct: dailyAvail,
+    population_config: dataBasic.population,
+    eg_schedule: dataBasic.egSchedule,
+    fs_day_limits: dataBasic.fsDayLimits,
+    fs_fine_tune: dataBasic.fsFineTune,
+  };
+  basicChatHistory = [];
+
+  // Draw Guest Room Block chart (paired bars: on-site % vs TCO model)
+  const TCO_BASIC = [5, 30, 70, 85, 95, 100, 100, 100, 100, 50, 30, 10];
+  const chartSection = document.getElementById('b-avail-chart-section');
+  const canvas = document.getElementById('b-avail-chart');
+  if (canvas && dailyAvail) {
+    const dpr = window.devicePixelRatio || 1;
+    const W = (chartSection.clientWidth - 48) || 700;
+    const H = 260;
+    canvas.width  = W * dpr;
+    canvas.height = H * dpr;
+    canvas.style.width  = W + 'px';
+    canvas.style.height = H + 'px';
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+
+    const PAD_L = 36, PAD_R = 16, PAD_T = 28, PAD_B = 52;
+    const chartW = W - PAD_L - PAD_R;
+    const chartH = H - PAD_T - PAD_B;
+    const n = 12;
+    const groupW = chartW / n;
+    const barW = Math.min(groupW * 0.35, 28);
+    const gap = 3;
+
+    // Grid lines
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.textAlign = 'right';
+    [0, 25, 50, 75, 100].forEach(v => {
+      const y = PAD_T + chartH - (v / 100) * chartH;
+      ctx.beginPath();
+      ctx.strokeStyle = v === 0 ? '#ccc' : '#eee';
+      ctx.lineWidth = 1;
+      ctx.moveTo(PAD_L, y);
+      ctx.lineTo(PAD_L + chartW, y);
+      ctx.stroke();
+      ctx.fillStyle = '#888';
+      ctx.fillText(v + '%', PAD_L - 4, y + 3.5);
+    });
+
+    for (let i = 0; i < n; i++) {
+      const d = i + 1;
+      const pct = dailyAvail[d] || 0;
+      const tPct = TCO_BASIC[i] || 0;
+      const blocked = BASIC_BLOCKED.has(d);
+      const gx = PAD_L + i * groupW + groupW / 2;
+
+      // Pipeline bar (dark blue) — left of pair
+      const pH = (pct / 100) * chartH;
+      ctx.fillStyle = blocked ? '#d0d5db' : '#015480';
+      ctx.fillRect(gx - barW - gap / 2, PAD_T + chartH - pH, barW, pH);
+      if (pct > 0) {
+        ctx.fillStyle = blocked ? '#aaa' : '#015480';
+        ctx.font = 'bold 9px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(pct + '%', gx - barW / 2 - gap / 2, PAD_T + chartH - pH - 4);
+      }
+
+      // TCO bar (light blue) — right of pair
+      const tH = (tPct / 100) * chartH;
+      ctx.fillStyle = blocked ? '#e8eaed' : '#90CAF9';
+      ctx.fillRect(gx + gap / 2, PAD_T + chartH - tH, barW, tH);
+      if (tPct > 0) {
+        ctx.fillStyle = blocked ? '#bbb' : '#5a9ec9';
+        ctx.font = 'bold 9px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(tPct + '%', gx + barW / 2 + gap / 2, PAD_T + chartH - tH - 4);
+      }
+
+      // X-axis labels
+      ctx.fillStyle = blocked ? '#aaa' : '#555';
+      ctx.font = `bold 10px system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText(DAY_DOW[i], gx, PAD_T + chartH + 16);
+      ctx.font = '9px system-ui, sans-serif';
+      ctx.fillStyle = '#aaa';
+      ctx.fillText('D' + d, gx, PAD_T + chartH + 28);
+    }
+  }
+
+  renderBasicChatArea();
+}
+
+function renderBasicChatArea() {
+  const area = document.getElementById('b-chat-area');
+  if (!area) return;
+  area.innerHTML = `
+    <div class="chat-messages" id="b-chat-messages"></div>
+    <div class="chat-input-row">
+      <input type="text" id="b-chat-input" placeholder="Ask about these results…" onkeydown="if(event.key==='Enter')sendBasicChat()">
+      <button id="b-chat-send" onclick="sendBasicChat()">Ask Claude</button>
+    </div>
+    <div id="b-no-key-note" style="margin-top:10px"></div>`;
+  checkBasicChatAvailability();
+}
+
+async function checkBasicChatAvailability() {
+  try {
+    const r = await fetch('/api-status');
+    const d = await r.json();
+    if (!d.available) {
+      document.getElementById('b-chat-input').disabled = true;
+      document.getElementById('b-chat-send').disabled = true;
+      document.getElementById('b-no-key-note').innerHTML = `
+        <div class="no-key-note">
+          Chat analysis requires an Anthropic API key. To enable it:<br>
+          1. Get a key at <strong>console.anthropic.com</strong><br>
+          2. Stop the server, run: <code>export ANTHROPIC_API_KEY=sk-ant-...</code><br>
+          3. Restart: <code>python3 server.py</code>
         </div>`;
-    }).join('')}`;
+    }
+  } catch(e) {}
+}
+
+async function sendBasicChat() {
+  if (basicChatStreaming) return;
+  const input = document.getElementById('b-chat-input');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+
+  const msgs = document.getElementById('b-chat-messages');
+  const userDiv = document.createElement('div');
+  userDiv.className = 'chat-msg user';
+  userDiv.textContent = text;
+  msgs.appendChild(userDiv);
+
+  basicChatStreaming = true;
+  document.getElementById('b-chat-send').disabled = true;
+
+  const aiDiv = document.createElement('div');
+  aiDiv.className = 'chat-msg assistant';
+  aiDiv.textContent = '…';
+  msgs.appendChild(aiDiv);
+  msgs.scrollTop = 99999;
+
+  try {
+    const resp = await fetch('/chat', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        message: text,
+        result_context: {
+          mode: 'basic_feasibility',
+          wizard_config: { population: dataBasic.population },
+          pipeline_results: basicFeasibilityContext,
+        },
+      }),
+    });
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '', aiText = '';
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, {stream:true});
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const d = JSON.parse(line.slice(6));
+        if (d.type === 'text') { aiText += d.content; aiDiv.textContent = aiText; msgs.scrollTop = 99999; }
+      }
+    }
+  } catch(e) {
+    aiDiv.textContent = 'Error: ' + e.message;
+  } finally {
+    basicChatStreaming = false;
+    document.getElementById('b-chat-send').disabled = false;
+  }
+}
+
+// ============================================================
+// Basic — Scheduling engine
+// ============================================================
+function runBasicSchedule() {
+  const groups = window._basicGroups;
+  if (!groups || !groups.length) { alert('Run feasibility first.'); return; }
+
+  const limits   = dataBasic.fsDayLimits || {};
+  const egSched  = dataBasic.egSchedule  || {};
+  const smpwPD   = dataBasic.smpwTotal   || 0;
+
+  // --- Build capacity buckets ---
+  // FS: each FS day gets a cap (max from fine-tune, or Infinity)
+  const fsCap = {};
+  FS_DAYS.forEach(d => {
+    const lim = limits[d] || {};
+    fsCap[d] = lim.max !== '' && lim.max != null ? Number(lim.max) : Infinity;
+  });
+
+  // EG: per day, per show (show1, show2) — cap from egSchedule max
+  const egCap = {};
+  for (let d = 1; d <= 12; d++) {
+    if (BASIC_BLOCKED.has(d)) continue;
+    const ds = egSched[d] || {};
+    egCap[d] = {
+      show1: ds.show1?.enabled ? (ds.show1.max !== '' && ds.show1.max != null ? Number(ds.show1.max) : Infinity) : 0,
+      show2: ds.show2?.enabled ? (ds.show2.max !== '' && ds.show2.max != null ? Number(ds.show2.max) : Infinity) : 0,
+    };
+  }
+
+  // Remaining capacity trackers
+  const fsRem  = {}; FS_DAYS.forEach(d => { fsRem[d]  = fsCap[d]; });
+  const egRem  = {};
+  for (let d = 1; d <= 12; d++) {
+    if (BASIC_BLOCKED.has(d)) continue;
+    egRem[d] = { show1: egCap[d]?.show1 || 0, show2: egCap[d]?.show2 || 0 };
+  }
+
+  // Scheduled tallies per day
+  const fs1Sched = {}, fs2Sched = {}, egShow1 = {}, egShow2 = {};
+  FS_DAYS.forEach(d => { fs1Sched[d] = 0; fs2Sched[d] = 0; });
+  for (let d = 1; d <= 12; d++) { egShow1[d] = 0; egShow2[d] = 0; }
+
+  // Outcome counters
+  let totalFS1Sched = 0, totalFS2Sched = 0, totalEGSched = 0;
+  let totalFS1Miss  = 0, totalFS2Miss  = 0, totalEGMiss  = 0;
+  let fullySched = 0, partiallySched = 0, nonesSched = 0;
+
+  // SMPW tracker per day
+  const smpwRem = {}; FS_DAYS.forEach(d => { smpwRem[d] = smpwPD; });
+  const smpwSched = {}; FS_DAYS.forEach(d => { smpwSched[d] = 0; });
+
+  // Helper: feasible FS days for a group (on-site, not already used, has remaining cap)
+  function feasibleFS(grp, exclude) {
+    return FS_DAYS.filter(d =>
+      grp.checkin < d && grp.checkout > d &&
+      !BASIC_BLOCKED.has(d) &&
+      !exclude.has(d) &&
+      fsRem[d] > 0
+    );
+  }
+
+  // Helper: pick best FS day — least loaded (most remaining cap) for even spread
+  function pickFS(days) {
+    return days.reduce((best, d) => fsRem[d] > fsRem[best] ? d : best, days[0]);
+  }
+
+  // Helper: feasible EG slots for a group
+  function feasibleEG(grp) {
+    const slots = [];
+    for (let d = 1; d <= 12; d++) {
+      if (BASIC_BLOCKED.has(d) || grp.checkin >= d || grp.checkout <= d) continue;
+      if (egRem[d]?.show1 > 0) slots.push({ d, show: 'show1' });
+      if (egRem[d]?.show2 > 0) slots.push({ d, show: 'show2' });
+    }
+    return slots;
+  }
+
+  // --- Schedule each group ---
+  for (const grp of groups) {
+    let fs1Day = null, fs2Day = null, egSlot = null;
+    let fs1Got = 0, fs2Got = 0, egGot = 0;
+
+    // FS1
+    const fs1Days = feasibleFS(grp, new Set());
+    if (fs1Days.length) {
+      fs1Day = pickFS(fs1Days);
+      const assign = Math.min(grp.size, fsRem[fs1Day]);
+      fs1Sched[fs1Day]  += assign;
+      fsRem[fs1Day]     -= assign;
+      // SMPW allocation
+      const smpwAssign = Math.min(assign, smpwRem[fs1Day]);
+      smpwSched[fs1Day] += smpwAssign;
+      smpwRem[fs1Day]   -= smpwAssign;
+      totalFS1Sched     += assign;
+      fs1Got = assign;
+      if (assign < grp.size) totalFS1Miss += grp.size - assign;
+    } else {
+      totalFS1Miss += grp.size;
+    }
+
+    // FS2 — different day from FS1
+    const fs2Days = feasibleFS(grp, new Set(fs1Day != null ? [fs1Day] : []));
+    if (fs2Days.length) {
+      fs2Day = pickFS(fs2Days);
+      const assign = Math.min(grp.size, fsRem[fs2Day]);
+      fs2Sched[fs2Day]  += assign;
+      fsRem[fs2Day]     -= assign;
+      const smpwAssign = Math.min(assign, smpwRem[fs2Day]);
+      smpwSched[fs2Day] += smpwAssign;
+      smpwRem[fs2Day]   -= smpwAssign;
+      totalFS2Sched     += assign;
+      fs2Got = assign;
+      if (assign < grp.size) totalFS2Miss += grp.size - assign;
+    } else {
+      totalFS2Miss += grp.size;
+    }
+
+    // EG — only if delegate was fully scheduled for both FS1 and FS2
+    const egSlots = (fs1Got >= grp.size && fs2Got >= grp.size) ? feasibleEG(grp) : [];
+    if (fs1Got < grp.size || fs2Got < grp.size) totalEGMiss += grp.size;
+    if (egSlots.length) {
+      // Pick show with most remaining capacity
+      egSlot = egSlots.reduce((best, s) => egRem[s.d][s.show] > egRem[best.d][best.show] ? s : best, egSlots[0]);
+      const assign = Math.min(grp.size, egRem[egSlot.d][egSlot.show]);
+      if (egSlot.show === 'show1') { egShow1[egSlot.d] += assign; }
+      else                         { egShow2[egSlot.d] += assign; }
+      egRem[egSlot.d][egSlot.show] -= assign;
+      totalEGSched += assign;
+      egGot = assign;
+      if (assign < grp.size) totalEGMiss += grp.size - assign;
+    } else {
+      totalEGMiss += grp.size;
+    }
+
+    // Fully / partially / none scheduled
+    const got3 = fs1Got >= grp.size && fs2Got >= grp.size && egGot >= grp.size;
+    const got0 = fs1Got === 0 && fs2Got === 0 && egGot === 0;
+    if (got3)       fullySched   += grp.size;
+    else if (got0)  nonesSched   += grp.size;
+    else            partiallySched += grp.size;
+  }
+
+  showBasicScheduleResults({
+    fs1Sched, fs2Sched, egShow1, egShow2,
+    smpwSched,
+    totalFS1Sched, totalFS2Sched, totalEGSched,
+    totalFS1Miss,  totalFS2Miss,  totalEGMiss,
+    fullySched, partiallySched, nonesSched,
+    totalDelegates: groups.reduce((s, g) => s + g.size, 0),
+    fsCap, egCap,
+  });
+}
+
+function showBasicScheduleResults(r) {
+  // Scroll to / reveal the schedule section
+  let sec = document.getElementById('b-schedule-section');
+  if (!sec) {
+    sec = document.createElement('div');
+    sec.id = 'b-schedule-section';
+    const resultsDiv = document.getElementById('basic-results');
+    // Insert before the chat section
+    const chat = resultsDiv.querySelector('.chat-section');
+    if (chat) resultsDiv.insertBefore(sec, chat);
+    else resultsDiv.appendChild(sec);
+  }
+
+  const pct = (n, d) => d > 0 ? Math.round(100 * n / d) : 0;
+  const pctBar = (p, color) =>
+    `<div style="display:flex;align-items:center;gap:6px;margin-top:4px">
+       <div style="flex:1;background:#eee;border-radius:99px;height:6px;overflow:hidden">
+         <div style="background:${color};height:6px;width:${p}%;border-radius:99px"></div>
+       </div>
+       <span style="font-size:11px;font-weight:700;color:${color}">${p}%</span>
+     </div>`;
+
+  const fs1Pct = pct(r.totalFS1Sched, r.totalDelegates);
+  const fs2Pct = pct(r.totalFS2Sched, r.totalDelegates);
+  const egPct  = pct(r.totalEGSched,  r.totalDelegates);
+  const fullPct = pct(r.fullySched,   r.totalDelegates);
+
+  function statCard(label, sched, miss, total, color) {
+    const p = pct(sched, total);
+    return `<div style="background:white;border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;min-width:160px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px">${label}</div>
+      <div style="font-size:20px;font-weight:700;color:${color}">${sched.toLocaleString()}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px">of ${total.toLocaleString()} delegates</div>
+      ${miss > 0 ? `<div style="font-size:11px;color:#c0392b;margin-top:4px">${miss.toLocaleString()} unscheduled</div>` : '<div style="font-size:11px;color:#1a7a4a;margin-top:4px">All scheduled ✓</div>'}
+      ${pctBar(p, color)}
+    </div>`;
+  }
+
+  // FS per-day table
+  const fsTableRows = FS_DAYS.map(d => {
+    const fs1 = r.fs1Sched[d] || 0;
+    const fs2 = r.fs2Sched[d] || 0;
+    const total = fs1 + fs2;
+    const smpw = r.smpwSched[d] || 0;
+    const nonSmpw = Math.max(0, total - smpw);
+    const cong = Math.ceil(nonSmpw / 48);
+    const vol  = Math.ceil(total * 2.25);
+    const cap  = r.fsCap[d] === Infinity ? '—' : r.fsCap[d].toLocaleString();
+    const capNum = r.fsCap[d] === Infinity ? null : r.fsCap[d];
+    const over1 = capNum !== null && fs1 >= capNum;
+    const over2 = capNum !== null && fs2 >= capNum;
+    return `<tr>
+      <td>Day ${d}</td><td>${DAY_DOW[d-1]}</td>
+      <td style="${over1?'color:#c0392b;font-weight:600':''}">${fs1.toLocaleString()}</td>
+      <td style="${over2?'color:#c0392b;font-weight:600':''}">${fs2.toLocaleString()}</td>
+      <td><strong>${total.toLocaleString()}</strong></td>
+      <td>${smpw.toLocaleString()}</td>
+      <td>${nonSmpw.toLocaleString()}</td>
+      <td>${cong.toLocaleString()}</td>
+      <td>${vol.toLocaleString()}</td>
+      <td style="color:var(--muted)">${cap}</td>
+    </tr>`;
+  }).join('');
+
+  // FS totals row
+  const totalFS = Object.values(r.fs1Sched).reduce((s,v)=>s+v,0) + Object.values(r.fs2Sched).reduce((s,v)=>s+v,0);
+  const totalSmpw = Object.values(r.smpwSched).reduce((s,v)=>s+v,0);
+  const totalNonSmpw = Math.max(0, totalFS - totalSmpw);
+  const fsTotals = `<tr style="font-weight:700;border-top:2px solid var(--border);background:var(--surface2)">
+    <td colspan="2">Totals</td>
+    <td>${Object.values(r.fs1Sched).reduce((s,v)=>s+v,0).toLocaleString()}</td>
+    <td>${Object.values(r.fs2Sched).reduce((s,v)=>s+v,0).toLocaleString()}</td>
+    <td>${totalFS.toLocaleString()}</td>
+    <td>${totalSmpw.toLocaleString()}</td>
+    <td>${totalNonSmpw.toLocaleString()}</td>
+    <td>${Math.ceil(totalNonSmpw/48).toLocaleString()}</td>
+    <td>${Math.ceil(totalFS*2.25).toLocaleString()}</td>
+    <td>—</td>
+  </tr>`;
+
+  // EG per-day table
+  const egTableRows = Array.from({length:12},(_,i)=>i+1).map(d => {
+    if (BASIC_BLOCKED.has(d)) return `<tr style="color:var(--muted2);background:#f8f9fa"><td>Day ${d}</td><td>${DAY_DOW[d-1]}</td><td colspan="5" style="text-align:center;font-style:italic">Blocked</td></tr>`;
+    const s1 = r.egShow1[d] || 0;
+    const s2 = r.egShow2[d] || 0;
+    if (s1 === 0 && s2 === 0) return `<tr style="color:var(--muted2)"><td>Day ${d}</td><td>${DAY_DOW[d-1]}</td><td colspan="5" style="text-align:center">Not scheduled</td></tr>`;
+    const cap1 = r.egCap[d]?.show1 === Infinity ? '—' : (r.egCap[d]?.show1 || 0).toLocaleString();
+    const cap2 = r.egCap[d]?.show2 === Infinity ? '—' : (r.egCap[d]?.show2 || 0).toLocaleString();
+    return `<tr>
+      <td>Day ${d}</td><td>${DAY_DOW[d-1]}</td>
+      <td>${s1 > 0 ? s1.toLocaleString() : '—'}</td>
+      <td style="color:var(--muted);font-size:11px">${s1 > 0 ? cap1 : '—'}</td>
+      <td>${s2 > 0 ? s2.toLocaleString() : '—'}</td>
+      <td style="color:var(--muted);font-size:11px">${s2 > 0 ? cap2 : '—'}</td>
+      <td><strong>${(s1+s2).toLocaleString()}</strong></td>
+    </tr>`;
+  }).join('');
+
+  sec.innerHTML = `
+    <div class="result-section" style="border:2px solid #1a7a4a;border-radius:var(--radius)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+        <h3 style="margin:0;color:#1a7a4a">▶ Schedule Results</h3>
+        <span style="font-size:12px;color:var(--muted)">Greedy assignment · FS1 → FS2 → EG · caps enforced</span>
+      </div>
+
+      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px">
+        ${statCard('FS1 Scheduled', r.totalFS1Sched, r.totalFS1Miss, r.totalDelegates, r.totalFS1Miss>0?'#c0392b':'#1a7a4a')}
+        ${statCard('FS2 Scheduled', r.totalFS2Sched, r.totalFS2Miss, r.totalDelegates, r.totalFS2Miss>0?'#c0392b':'#1a7a4a')}
+        ${statCard('EG Scheduled',  r.totalEGSched,  r.totalEGMiss,  r.totalDelegates, r.totalEGMiss>0?'#c0392b':'#1a7a4a')}
+        <div style="background:white;border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;min-width:160px">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px">Fully Scheduled</div>
+          <div style="font-size:20px;font-weight:700;color:${r.fullySched===r.totalDelegates?'#1a7a4a':'#c0392b'}">${r.fullySched.toLocaleString()}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${r.partiallySched.toLocaleString()} partial · ${r.nonesSched.toLocaleString()} none</div>
+          ${pctBar(fullPct, r.fullySched===r.totalDelegates?'#1a7a4a':'#c0392b')}
+        </div>
+      </div>
+
+      <h4 style="margin-bottom:8px;font-size:13px">Field Service by Day</h4>
+      <div style="overflow-x:auto;margin-bottom:20px">
+      <table class="result-table" style="font-size:12px;min-width:700px">
+        <thead><tr>
+          <th>Day</th><th>DOW</th>
+          <th>FS1 Sched.</th><th>FS2 Sched.</th><th>Total FS</th>
+          <th>SMPW</th><th>Non-SMPW</th><th>Cong.</th><th>Vol.</th><th>Cap</th>
+        </tr></thead>
+        <tbody>${fsTableRows}${fsTotals}</tbody>
+      </table>
+      </div>
+
+      <h4 style="margin-bottom:8px;font-size:13px">Evening Gathering by Day</h4>
+      <div style="overflow-x:auto">
+      <table class="result-table" style="font-size:12px;min-width:480px">
+        <thead><tr>
+          <th>Day</th><th>DOW</th>
+          <th>1st Show</th><th style="color:var(--muted);font-weight:400">Cap</th>
+          <th>2nd Show</th><th style="color:var(--muted);font-weight:400">Cap</th>
+          <th>Total EG</th>
+        </tr></thead>
+        <tbody>${egTableRows}</tbody>
+      </table>
+      </div>
+    </div>`;
+
+  sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ============================================================
+// Basic — Save & Compare runs
+// ============================================================
+function saveBasicRun() {
+  const snap = window._basicRunSnapshot;
+  if (!snap) return;
+  const name = prompt('Name this run:', `Run ${savedBasicRuns.length + 1}`);
+  if (name === null) return; // cancelled
+  savedBasicRuns.push({ name: name.trim() || `Run ${savedBasicRuns.length + 1}`, ...snap });
+  renderBasicComparison();
+}
+
+function clearBasicRuns() {
+  if (!confirm('Clear all saved runs?')) return;
+  savedBasicRuns = [];
+  renderBasicComparison();
+}
+
+function renderBasicComparison() {
+  const sec = document.getElementById('b-compare-section');
+  if (!sec) return;
+  if (savedBasicRuns.length < 1) { sec.innerHTML = ''; return; }
+
+  const runs = savedBasicRuns;
+  const n    = runs.length;
+
+  function cell(val, highlight) {
+    const style = highlight ? 'font-weight:700;color:var(--accent)' : '';
+    return `<td style="text-align:center;${style}">${val}</td>`;
+  }
+  function pctBar(pct, color) {
+    return `<div style="display:flex;align-items:center;gap:6px">
+      <div style="flex:1;background:#eee;border-radius:99px;height:5px;overflow:hidden">
+        <div style="background:${color};height:5px;width:${pct}%;border-radius:99px"></div>
+      </div>
+      <span style="font-size:10px;font-weight:600;color:${color};min-width:32px">${pct}%</span>
+    </div>`;
+  }
+
+  // Header row
+  const headerCells = runs.map((r, i) =>
+    `<th style="text-align:center;min-width:130px">
+      <div style="font-weight:700">${r.name}</div>
+      <div style="font-size:10px;font-weight:400;color:var(--muted);margin-top:2px">${r.totalDelegates.toLocaleString()} delegates</div>
+      <button onclick="savedBasicRuns.splice(${i},1);renderBasicComparison()" title="Remove"
+        style="margin-top:4px;background:none;border:none;color:var(--muted2);cursor:pointer;font-size:11px">✕ remove</button>
+    </th>`
+  ).join('');
+
+  // Metric rows — FS
+  function metricRow(label, vals, fmt, bold) {
+    const max = Math.max(...vals.map(v => typeof v === 'number' ? v : 0));
+    const min = Math.min(...vals.map(v => typeof v === 'number' ? v : Infinity));
+    return `<tr>
+      <td style="font-size:12px;color:var(--muted);padding-left:8px">${label}</td>
+      ${vals.map(v => {
+        const isMax = typeof v === 'number' && n > 1 && v === max && max !== min;
+        const isMin = typeof v === 'number' && n > 1 && v === min && max !== min;
+        const color = bold && isMax ? '#c0392b' : bold && isMin ? '#1a7a4a' : '';
+        return `<td style="text-align:center;font-weight:${bold?'600':'400'};color:${color}">${fmt(v)}</td>`;
+      }).join('')}
+    </tr>`;
+  }
+
+  function pctRow(label, vals) {
+    return `<tr>
+      <td style="font-size:12px;color:var(--muted);padding-left:8px">${label}</td>
+      ${vals.map(v => `<td style="text-align:center">${pctBar(v, v >= 90 ? '#1a7a4a' : v >= 70 ? 'var(--accent)' : '#c0392b')}</td>`).join('')}
+    </tr>`;
+  }
+
+  function sectionHeader(label) {
+    return `<tr style="background:var(--surface2)">
+      <td colspan="${n+1}" style="font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:8px">${label}</td>
+    </tr>`;
+  }
+
+  const fmt  = v => typeof v === 'number' ? v.toLocaleString() : v;
+  const fmtN = v => v > 0 ? `<span style="color:#c0392b">${v.toLocaleString()}</span>` : '<span style="color:#1a7a4a">0</span>';
+
+  // Per-day FS demand sub-table
+  const dayRows = FS_DAYS.map(d => {
+    const vals = runs.map(r => Math.ceil(r.fs.demandByDay[d] || 0));
+    const max = Math.max(...vals), min = Math.min(...vals);
+    return `<tr>
+      <td style="font-size:11px;color:var(--muted);padding-left:16px">Day ${d} (${DAY_DOW[d-1]})</td>
+      ${vals.map(v => {
+        const color = n > 1 && v === max && max !== min ? '#c0392b' : n > 1 && v === min && max !== min ? '#1a7a4a' : '';
+        return `<td style="text-align:center;font-size:11px;${color?`color:${color};font-weight:600`:''}">${v.toLocaleString()}</td>`;
+      }).join('')}
+    </tr>`;
+  }).join('');
+
+  sec.innerHTML = `
+    <div class="result-section" style="border:2px solid var(--accent);border-radius:var(--radius)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <h3 style="margin:0">Saved Run Comparison</h3>
+        <div style="display:flex;gap:8px">
+          ${n < 6 ? '' : ''}
+          <button class="btn btn-secondary" style="font-size:12px;padding:6px 12px" onclick="clearBasicRuns()">Clear All</button>
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+      <table class="result-table" style="font-size:12px;min-width:${280 + n*130}px">
+        <thead><tr><th style="min-width:140px">Metric</th>${headerCells}</tr></thead>
+        <tbody>
+          ${sectionHeader('Field Service (FS1 + FS2)')}
+          ${metricRow('Potential (demand)', runs.map(r => r.fs.potential), fmt, false)}
+          ${metricRow('Feasible (within caps)', runs.map(r => r.fs.feasible), fmt, false)}
+          ${metricRow('Gap (over cap)', runs.map(r => r.fs.gap), v => v > 0 ? `<span style="color:#c0392b;font-weight:600">${v.toLocaleString()}</span>` : '—', false)}
+          ${metricRow('Miss (no valid day)', runs.map(r => r.fs.miss), v => v > 0 ? `<span style="color:#c0392b">${v.toLocaleString()}</span>` : '—', false)}
+          ${pctRow('% Feasible', runs.map(r => r.fs.pct))}
+          ${sectionHeader('FS Demand by Day')}
+          ${dayRows}
+          ${sectionHeader('Evening Gathering')}
+          ${metricRow('Potential (demand)', runs.map(r => r.eg.potential), fmt, false)}
+          ${metricRow('Feasible (within caps)', runs.map(r => r.eg.feasible), fmt, false)}
+          ${metricRow('Gap (over cap)', runs.map(r => r.eg.gap), v => v > 0 ? `<span style="color:#c0392b;font-weight:600">${v.toLocaleString()}</span>` : '—', false)}
+          ${metricRow('Miss (no valid day)', runs.map(r => r.eg.miss), v => v > 0 ? `<span style="color:#c0392b">${v.toLocaleString()}</span>` : '—', false)}
+          ${pctRow('% Feasible', runs.map(r => r.eg.pct))}
+        </tbody>
+      </table>
+      </div>
+    </div>`;
 }
 
 // ============================================================
