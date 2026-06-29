@@ -40,7 +40,7 @@ last_result: dict | None = None
 
 @app.get("/")
 async def index():
-    return FileResponse(BASE / "static" / "index.html")
+    return FileResponse(BASE / "static" / "index.html", headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api-status")
@@ -111,16 +111,24 @@ async def reset():
 # Chat streaming
 # ---------------------------------------------------------------------------
 
-ANALYSIS_SYSTEM = """You are a convention logistics analyst. The user has just run a logistics modeling pipeline and wants help interpreting the results.
+ANALYSIS_SYSTEM = """You are a convention logistics analyst embedded in a planning tool called the DSM app. You have full visibility into every step the user has configured.
 
-Help them understand:
-- Activity assignment rates and non-attendance reasons (structural vs capacity-limited)
-- Bus efficiency — what's driving under-minimum trips, which stops are isolated
-- Whether the scheduling priority mode (allocation vs calendar) produced the expected results
-- Trade-offs if they want to re-run with different parameters
-- What the Excel sheets and Word report contain
+The context you receive is structured as:
+- wizard_config.step1_population: delegate count, group size distribution, length-of-stay distribution, arrival day distribution, window dates
+- wizard_config.step2_hotels: hotel names, room capacities, transport stop assignments, bus min/max sizes
+- wizard_config.step3_activities: required and optional activities with dates, capacities, priorities, SMPW config, Field Service daily cap
+- wizard_config.step4_scheduling: scheduling priority mode, preference depth, same-day pairs, random seed
+- pipeline_results: full output including activity assignment rates, daily available delegates (room_block_pct by day), TCO model comparison, bus trips, SMPW counts, non-attendance reasons
 
-Be concise and specific. Reference actual numbers from the results when answering."""
+Key domain rules to know:
+- Convention window is 12 days. Days 7/8/9 are mandatory convention days (not schedulable). Days 6 and 10 are schedulable.
+- All delegates must be present for Nights 6, 7, 8, and 9 (check-in by Day 6, check-out no earlier than Day 10).
+- Field Service 1 and Field Service 2 share a daily delegate capacity pool.
+- SMPW is a sub-activity of Field Service — groups assigned SMPW skip the bus that day.
+- EG AM and EG PM are the same Evening Gathering event at different times (mutex group).
+- room_block_pct shows what % of total delegates are in town each day (Days 1–12). tco_model_pct is the target occupancy curve to match.
+
+When the user asks about a specific step, reference their exact configured values. When comparing room block to TCO, use the day-by-day numbers. Be concise and specific."""
 
 
 async def _stream_chat(result_context: dict | None) -> AsyncGenerator[str, None]:
@@ -130,7 +138,7 @@ async def _stream_chat(result_context: dict | None) -> AsyncGenerator[str, None]
 
         system = ANALYSIS_SYSTEM
         if result_context:
-            system += f"\n\nPipeline results summary:\n{json.dumps(result_context, indent=2)}"
+            system += f"\n\n---\nFULL APP CONTEXT (wizard configuration + pipeline results):\n{json.dumps(result_context, indent=2)}"
 
         full_text = ""
         with client.messages.stream(
@@ -186,9 +194,10 @@ def execute_pipeline(config: dict) -> dict:
     co_fixed = _parse_date(pop["checkout_fixed_date"]) if pop.get("checkout_fixed_date") else None
     from datetime import timedelta
     window_start = _parse_date(pop["window_start"])
-    # Nights 7, 8, 9 are mandatory convention nights (0-indexed: days 6, 7, 8 from window_start)
-    core_start = window_start + timedelta(days=6)   # start of night 7
-    core_end   = window_start + timedelta(days=9)   # morning after night 9 (groups must not check out before this)
+    # Convention days (not schedulable): Days 7, 8, 9 from window_start
+    # Day 6 and Day 10 are schedulable. Delegates must be present Nights 6–9.
+    core_start = window_start + timedelta(days=6)   # Day 7 — first blocked convention day
+    core_end   = window_start + timedelta(days=9)   # Day 10 — exclusive upper bound (Day 10 is schedulable)
 
     pop_cfg = PopulationConfig(
         total_delegates=pop.get("total_delegates"),
@@ -218,18 +227,25 @@ def execute_pipeline(config: dict) -> dict:
     )
 
     # Activities
+    # Field Service shared delegate pool — both FS1 and FS2 draw from this per-day cap
+    fs_cap_raw = config.get("field_service_cap", {})
+    fs_cap = {_parse_date(k): int(v) for k, v in fs_cap_raw.items() if v}
+    cap_pools = {"Field Service": fs_cap} if fs_cap else None
+
     req_raw = []
     for act in config.get("required_activities", []):
         cap = act.get("capacity")
         if isinstance(cap, dict):
             cap = {_parse_date(k): v for k, v in cap.items()}
+        is_fs = act["name"] in ("Field Service 1", "Field Service 2")
         req_raw.append({
             "name": act["name"],
             "dates": [_parse_date(d) for d in act.get("dates", [])],
-            "capacity": cap,
+            "capacity": None if is_fs and fs_cap else cap,  # pool replaces individual cap
             "priority": act.get("priority", 999),
             "mutex_group": act.get("mutex_group"),
             "prerequisites": act.get("prerequisites") or [],
+            "cap_pool": "Field Service" if is_fs and fs_cap else None,
         })
 
     opt_raw = []
@@ -241,6 +257,7 @@ def execute_pipeline(config: dict) -> dict:
             "name": act["name"],
             "dates": [_parse_date(d) for d in act.get("dates", [])],
             "capacity": cap,
+            "min_capacity": act.get("min_capacity"),
             "want_pct": act.get("want_pct", 0),
             "prerequisite": act.get("prerequisite"),
             "prerequisite_group": act.get("prerequisite_group"),
@@ -270,6 +287,7 @@ def execute_pipeline(config: dict) -> dict:
         order_is_priority=config.get("order_is_priority", True),
         same_day_pairs=same_day_pairs,
         preference_depth=preference_depth,
+        cap_pools=cap_pools,
     )
 
     bus_min = config["bus_min"]
@@ -306,35 +324,68 @@ def execute_pipeline(config: dict) -> dict:
     total_trips = len(bus_trips_df) if not bus_trips_df.empty else 0
     under_min = int(bus_trips_df["UnderMinimum"].sum()) if not bus_trips_df.empty else 0
     pct_under = f"{100*under_min/total_trips:.1f}" if total_trips else "0.0"
-    act_assigned = {
-        f"[R] {name}": {
+
+    # Activity assignment — merge mutex groups (e.g. EG AM + EG PM → single "EG" entry)
+    raw_req = {
+        name: {
             "groups": int(df[f"req_{name}"].notna().sum()),
             "delegates": int(df.loc[df[f"req_{name}"].notna(), "GroupSize"].sum()),
         } for name in REQUIRED
     }
-    act_assigned.update({
-        f"[O] {name}": {
+    mutex_groups: dict[str, list[str]] = {}
+    for name, act in REQUIRED.items():
+        mg = act.get("mutex_group")
+        if mg:
+            mutex_groups.setdefault(mg, []).append(name)
+
+    act_assigned: dict = {}
+    merged_names: set = set()
+    for mg, names in mutex_groups.items():
+        act_assigned[f"[R] {mg}"] = {
+            "groups": sum(raw_req[n]["groups"] for n in names),
+            "delegates": sum(raw_req[n]["delegates"] for n in names),
+            "breakdown": {n: raw_req[n] for n in names},
+        }
+        merged_names.update(names)
+    for name in REQUIRED:
+        if name not in merged_names:
+            act_assigned[f"[R] {name}"] = raw_req[name]
+    for name in OPTIONAL:
+        act_assigned[f"[O] {name}"] = {
             "groups": int(df[f"opt_{name}"].notna().sum()),
             "delegates": int(df.loc[df[f"opt_{name}"].notna(), "GroupSize"].sum()),
-        } for name in OPTIONAL
-    })
+        }
+
+    # SMPW totals and breakdown by FS activity
     smpw_total_groups = int(df["smpw_date"].notna().sum())
     smpw_total_delegates = int(df.loc[df["smpw_date"].notna(), "GroupSize"].sum()) if smpw_total_groups else 0
-    smpw_by_day = {}
+    smpw_by_day: dict = {}
+    smpw_by_fs: dict = {}
     if smpw_total_groups:
         for d, grp in df[df["smpw_date"].notna()].groupby("smpw_date"):
-            smpw_by_day[str(d)] = {"groups": int(len(grp)), "delegates": int(grp["GroupSize"].sum())}
+            fulfills_vals = grp["smpw_fulfills"].dropna().unique().tolist()
+            smpw_by_day[str(d)] = {
+                "groups": int(len(grp)),
+                "delegates": int(grp["GroupSize"].sum()),
+                "fulfills": fulfills_vals[0] if len(fulfills_vals) == 1 else ", ".join(str(v) for v in fulfills_vals),
+            }
+        for fs_name, grp in df[df["smpw_date"].notna()].groupby("smpw_fulfills"):
+            if fs_name:
+                smpw_by_fs[str(fs_name)] = {"groups": int(len(grp)), "delegates": int(grp["GroupSize"].sum())}
 
     # Multi-stop bus trips
     multi_stop_trips = 0
     if not bus_trips_df.empty and "Stops" in bus_trips_df.columns:
         multi_stop_trips = int((bus_trips_df["Stops"].str.contains("|", regex=False)).sum())
 
-    # Congregation service days = total FS1 + FS2 bus trips
+    # One-way bus trips broken down by FS1 and FS2
+    fs_bus_trips: dict = {}
     cong_service_days = 0
     if not bus_trips_df.empty and "ActivityLabels" in bus_trips_df.columns:
-        fs_mask = bus_trips_df["ActivityLabels"].str.contains("Field Service", na=False)
-        cong_service_days = int(fs_mask.sum())
+        for fs_name in ["Field Service 1", "Field Service 2"]:
+            n = int(bus_trips_df["ActivityLabels"].str.contains(fs_name, na=False).sum())
+            fs_bus_trips[fs_name] = n
+            cong_service_days += n
 
     # Delegates with two activities on the same day
     import pandas as _pd
@@ -346,6 +397,54 @@ def execute_pipeline(config: dict) -> dict:
     double_booked_groups = int(same_day_mask.sum())
     double_booked_delegates = int(df.loc[same_day_mask, "GroupSize"].sum())
 
+    # Daily breakdown: date → {activity_name → {groups, delegates}}
+    from collections import defaultdict
+    daily_activity: dict = defaultdict(dict)
+    for name in REQUIRED:
+        col = f"req_{name}"
+        for date_val, grp in df[df[col].notna()].groupby(col):
+            daily_activity[str(date_val)][name] = {
+                "groups": int(len(grp)),
+                "delegates": int(grp["GroupSize"].sum()),
+            }
+    for name in OPTIONAL:
+        col = f"opt_{name}"
+        for date_val, grp in df[df[col].notna()].groupby(col):
+            daily_activity[str(date_val)][name] = {
+                "groups": int(len(grp)),
+                "delegates": int(grp["GroupSize"].sum()),
+            }
+    for date_val, grp in df[df["smpw_date"].notna()].groupby("smpw_date"):
+        daily_activity[str(date_val)]["SMPW"] = {
+            "groups": int(len(grp)),
+            "delegates": int(grp["GroupSize"].sum()),
+        }
+
+    # Per-day available (ci < day < co) for every day in the full window
+    from datetime import timedelta as _td
+    all_act_date_cols = [f"req_{n}" for n in REQUIRED] + [f"opt_{n}" for n in OPTIONAL]
+    daily_available: dict = {}
+    daily_scheduled_delegates: dict = {}
+
+    # Compute available for every day in window (not just activity days)
+    _d = pop_cfg.window_start
+    while _d <= pop_cfg.window_end:
+        avail_mask = (df["CheckIn"] <= _d) & (df["CheckOut"] > _d)
+        daily_available[str(_d)] = int(df.loc[avail_mask, "GroupSize"].sum())
+        _d += _td(days=1)
+
+    for d_str in daily_activity:
+        d = date.fromisoformat(d_str)
+        avail_mask = (df["CheckIn"] <= d) & (df["CheckOut"] > d)
+        daily_available[d_str] = int(df.loc[avail_mask, "GroupSize"].sum())
+        sched_mask = _pd.Series(False, index=df.index)
+        for col in all_act_date_cols:
+            if col in df.columns:
+                sched_mask = sched_mask | (df[col] == d)
+        if "smpw_date" in df.columns:
+            sched_mask = sched_mask | (df["smpw_date"] == d)
+        daily_scheduled_delegates[d_str] = int(df.loc[sched_mask, "GroupSize"].sum())
+
     summary = {
         "total_groups": len(df),
         "total_delegates": int(df["GroupSize"].sum()),
@@ -356,10 +455,18 @@ def execute_pipeline(config: dict) -> dict:
         "smpw_groups": smpw_total_groups,
         "smpw_delegates": smpw_total_delegates,
         "smpw_by_day": smpw_by_day,
+        "smpw_by_fs": smpw_by_fs,
         "multi_stop_trips": multi_stop_trips,
         "cong_service_days": cong_service_days,
+        "fs_bus_trips": fs_bus_trips,
         "double_booked_groups": double_booked_groups,
         "double_booked_delegates": double_booked_delegates,
+        "daily_activity": dict(daily_activity),
+        "daily_available": daily_available,
+        "daily_scheduled_delegates": daily_scheduled_delegates,
+        "activity_names": list(REQUIRED.keys()) + list(OPTIONAL.keys()) + (["SMPW"] if smpw_total_groups else []),
+        "window_start": str(pop_cfg.window_start),
+        "window_end": str(pop_cfg.window_end),
         "biggest_findings": [a for a in assumptions if a.startswith(("WARNING", "ISOLATED", "VALIDATION ERROR"))],
     }
 

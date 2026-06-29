@@ -154,93 +154,62 @@ def generate_population(cfg: PopulationConfig, rng: np.random.Generator) -> tupl
         nights_list.extend([nv] * nc)
     rng.shuffle(nights_list)
 
-    # 6. Assign check-in / check-out dates
-    if cfg.checkout_policy == "arrival_based":
-        # Sample check-in first from arrival distribution, then check-out = check-in + nights
-        ci_dist = _rescale_dist(dict(cfg.checkin_distribution), "check-in (arrival) distribution", assumptions)
-        ci_dates = list(ci_dist.keys())
-        ci_fracs = [ci_dist[d] for d in ci_dates]
-        ci_counts = _largest_remainder(ci_dates, ci_fracs, n_groups)
-        raw_ci: list[date] = []
-        for d, cnt in zip(ci_dates, ci_counts):
-            raw_ci.extend([d] * cnt)
-        rng.shuffle(raw_ci)
-        checkin_dates = raw_ci
-        assumptions.append("CHECKOUT POLICY: Arrival-based — check-in sampled from day-of-week distribution; check-out = check-in + nights.")
+    # 6. Build arrival distribution lookup (used per-group below)
+    # Keys are dates; values are raw weights (not yet normalized per-LOS).
+    ci_dist_raw = _rescale_dist(dict(cfg.checkin_distribution), "check-in (arrival) distribution", assumptions)
+    assumptions.append(
+        "CHECKOUT POLICY: Arrival-based — check-in sampled from arrival distribution "
+        "constrained to the valid window for each group's LOS; check-out = check-in + nights. "
+        "Mandatory Nights 6–9 are guaranteed by construction (no post-hoc clamping)."
+    )
 
-    elif cfg.checkout_policy == "fixed":
-        if cfg.checkout_fixed_date is None:
-            raise ValueError("checkout_fixed_date must be set when checkout_policy='fixed'.")
-        # Everyone checks out on the same date; check-in = fixed_date - nights
-        assumptions.append(f"CHECKOUT POLICY: Fixed — all groups check out {cfg.checkout_fixed_date}.")
-        checkin_dates = None  # handled below
+    MIN_NIGHTS = 6
 
-    elif cfg.checkout_policy == "randomized":
-        co_dist = _rescale_dist(dict(cfg.checkout_distribution), "checkout distribution", assumptions)
-        co_dates_keys = list(co_dist.keys())
-        co_fracs = [co_dist[d] for d in co_dates_keys]
-        co_counts = _largest_remainder(co_dates_keys, co_fracs, n_groups)
-        raw_co: list[date] = []
-        for d, cnt in zip(co_dates_keys, co_counts):
-            raw_co.extend([d] * cnt)
-        rng.shuffle(raw_co)
-        assumptions.append("CHECKOUT POLICY: Randomized — check-out sampled from distribution; check-in = check-out − nights.")
-        checkin_dates = None  # handled below
-    else:
-        raise ValueError(f"Unknown checkout_policy: {cfg.checkout_policy!r}")
-
-    # 7. Build rows
+    # 7. Build rows — check-in is sampled per group from the arrival distribution
+    # restricted to the valid range for that group's LOS:
+    #   earliest_ci = core_stay_end − nights  (must reach Day 10 in time)
+    #   latest_ci   = core_stay_start − 1     (must be present for Night 6)
+    #   also bounded by window_start and (window_end − nights)
     rows = []
-    clamped_count = 0
-    core_adjusted_count = 0
+    fallback_count = 0
+
     for i in range(n_groups):
-        nights_nominal = nights_list[i]
+        nights = max(nights_list[i], MIN_NIGHTS)
 
-        if cfg.checkout_policy == "arrival_based":
-            ci = checkin_dates[i]
-            # Ensure check-in is early enough that checkout covers the full core stay
-            if cfg.core_stay_end:
-                latest_valid_ci = cfg.core_stay_end - timedelta(days=nights_nominal)
-                if ci > latest_valid_ci:
-                    ci = max(latest_valid_ci, cfg.window_start or latest_valid_ci)
-                    core_adjusted_count += 1
-            co_nominal = ci + timedelta(days=nights_nominal)
-            co = min(co_nominal, cfg.window_end) if cfg.window_end else co_nominal
-            if co != co_nominal:
-                clamped_count += 1
+        latest_ci = cfg.core_stay_start - timedelta(days=1)  # Day 6
+        earliest_ci = cfg.core_stay_end - timedelta(days=nights)
+        if cfg.window_start:
+            earliest_ci = max(earliest_ci, cfg.window_start)
+        if cfg.window_end:
+            latest_ci = min(latest_ci, cfg.window_end - timedelta(days=nights))
 
-        elif cfg.checkout_policy == "fixed":
-            co = cfg.checkout_fixed_date
-            ci_nominal = co - timedelta(days=nights_nominal)
-            ci = max(ci_nominal, cfg.window_start) if cfg.window_start else ci_nominal
-            if ci != ci_nominal:
-                clamped_count += 1
+        valid_weights = {d: w for d, w in ci_dist_raw.items() if earliest_ci <= d <= latest_ci}
 
-        else:  # randomized
-            co = raw_co[i]
-            ci_nominal = co - timedelta(days=nights_nominal)
-            ci = max(ci_nominal, cfg.window_start) if cfg.window_start else ci_nominal
-            if ci != ci_nominal:
-                clamped_count += 1
+        if valid_weights:
+            total_w = sum(valid_weights.values())
+            ci_days = list(valid_weights.keys())
+            ci_probs = [valid_weights[d] / total_w for d in ci_days]
+            ci = ci_days[rng.choice(len(ci_days), p=ci_probs)]
+        else:
+            # No arrival weight in valid range — fall back to latest valid day
+            ci = latest_ci
+            fallback_count += 1
 
+        co = ci + timedelta(days=nights)
         nights_realized = (co - ci).days
         rows.append({
             "GroupID": f"G{i+1:05d}",
             "GroupSize": group_sizes[i],
-            "NightsNominal": nights_nominal,
+            "NightsNominal": nights,
             "CheckIn": ci,
             "CheckOut": co,
             "NightsRealized": nights_realized,
         })
 
-    if clamped_count:
+    if fallback_count:
         assumptions.append(
-            f"CLAMPING: {clamped_count} groups had checkout clamped to fit within the stay window."
-        )
-    if core_adjusted_count:
-        assumptions.append(
-            f"CORE COVERAGE: {core_adjusted_count} groups had their check-in shifted earlier "
-            f"to ensure their stay covers the mandatory core period (through {cfg.core_stay_end})."
+            f"ARRIVAL FALLBACK: {fallback_count} groups had no arrival weight in their valid "
+            f"check-in window (LOS too long for early arrival days) — assigned to latest valid day."
         )
 
     df = pd.DataFrame(rows)

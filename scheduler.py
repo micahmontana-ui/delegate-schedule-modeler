@@ -29,10 +29,12 @@ def schedule(
     order_is_priority: bool = SCHEDULE_ORDER_IS_PRIORITY_NOT_CALENDAR,
     same_day_pairs: list[frozenset] | None = None,
     preference_depth: dict | None = None,
+    cap_pools: dict[str, dict[date, int]] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, list[str]]:
     df = df.copy()
     same_day_pairs = same_day_pairs or []
     preference_depth = preference_depth or {"three_plus": 40, "two_three": 30, "one_two": 20, "one": 10}
+    pool_counters: dict[str, dict[date, int]] = {name: dict(dates) for name, dates in (cap_pools or {}).items()}
 
     # ── Pre-assign want counts per group ──────────────────────────────────────
     n_opt = len(optional_activities)
@@ -108,7 +110,7 @@ def schedule(
 
     core_days: set[date] = set()
     d = core_stay_start
-    while d <= core_stay_end:
+    while d < core_stay_end:  # core_stay_end is the checkout morning, not a blocked night
         core_days.add(d)
         d += timedelta(days=1)
 
@@ -120,7 +122,7 @@ def schedule(
 
         candidate_days: set[date] = set()
         d = ci + timedelta(days=1)
-        while d < co:
+        while d < co:  # exclude arrival day; exclude checkout day (must be in town: CheckOut > date)
             if d not in core_days:
                 candidate_days.add(d)
             d += timedelta(days=1)
@@ -176,7 +178,10 @@ def schedule(
                 continue
 
             cap = cap_counters[act_name]
-            chosen = _pick_date(available_dates, cap, order_is_priority)
+            group_size = int(row["GroupSize"])
+            cap_pool_name = act_def.get("cap_pool")
+            pool_cap = pool_counters.get(cap_pool_name) if cap_pool_name else None
+            chosen = _pick_date(available_dates, cap, order_is_priority, group_size, pool_cap)
 
             if chosen is None:
                 non_attendance_rows.append({
@@ -191,7 +196,9 @@ def schedule(
             df.at[idx, f"req_{act_name}"] = chosen
             day_to_activity[chosen] = act_name
             if cap.get(chosen) is not None:
-                cap_counters[act_name][chosen] -= 1
+                cap_counters[act_name][chosen] -= group_size
+            if pool_cap is not None and pool_cap.get(chosen) is not None:
+                pool_counters[cap_pool_name][chosen] -= group_size
             if mutex:
                 mutex_assigned[mutex] = act_name
 
@@ -242,18 +249,36 @@ def schedule(
                 continue
 
             cap = cap_counters[act_name]
-            chosen = _pick_date(available, cap, order_is_priority=True)
+            chosen = _pick_date(available, cap, order_is_priority=True, group_size=int(row["GroupSize"]))
             if chosen is None:
                 continue
 
             df.at[idx, f"opt_{act_name}"] = chosen
             day_to_activity[chosen] = act_name
             if cap.get(chosen) is not None:
-                cap_counters[act_name][chosen] -= 1
+                cap_counters[act_name][chosen] -= int(row["GroupSize"])
             scheduled_opt += 1
 
     # ----------------------------------------------------------------
-    # Step D: Non-attendance summary
+    # Step D: Optional activity minimum-capacity cancellation
+    # If total delegates assigned to an optional activity falls below its
+    # min_capacity, cancel the activity entirely and free those days.
+    # ----------------------------------------------------------------
+    for act_name, act_def in optional_activities.items():
+        min_cap = act_def.get("min_capacity")
+        if not min_cap:
+            continue
+        col = f"opt_{act_name}"
+        assigned_delegates = int(df.loc[df[col].notna(), "GroupSize"].sum())
+        if assigned_delegates < min_cap:
+            df[col] = None
+            assumptions.append(
+                f"OPTIONAL CANCELLED [{act_name}]: only {assigned_delegates} delegates "
+                f"assigned, below minimum of {min_cap}. Activity cancelled."
+            )
+
+    # ----------------------------------------------------------------
+    # Step E: Non-attendance summary
     # ----------------------------------------------------------------
     non_attendance = pd.DataFrame(non_attendance_rows)
     if non_attendance.empty:
@@ -288,17 +313,28 @@ def _pick_date(
     available_dates: list[date],
     cap: dict[date, int | None],
     order_is_priority: bool,
+    group_size: int = 1,
+    pool_cap: dict[date, int] | None = None,
 ) -> date | None:
+    def _effective_remaining(d: date) -> float:
+        own = cap.get(d)
+        pool = pool_cap.get(d) if pool_cap else None
+        if own is None and pool is None:
+            return float("inf")
+        if own is None:
+            return float(pool)
+        if pool is None:
+            return float(own)
+        return float(min(own, pool))
+
+    def _fits(d: date) -> bool:
+        return _effective_remaining(d) >= group_size
+
     if order_is_priority:
-        def remaining(d):
-            v = cap.get(d)
-            return float("inf") if v is None else v
-        chosen = max(available_dates, key=remaining)
-        if cap.get(chosen) is not None and cap[chosen] <= 0:
-            return None
-        return chosen
+        chosen = max(available_dates, key=_effective_remaining)
+        return chosen if _fits(chosen) else None
     else:
         for d in sorted(available_dates):
-            if cap.get(d) is None or cap[d] > 0:
+            if _fits(d):
                 return d
         return None

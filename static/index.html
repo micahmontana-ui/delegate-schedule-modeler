@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Delegate Schedule Modeler</title>
+<title>Model Details — DSM</title>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
@@ -63,7 +63,7 @@ header .sub { font-size:11px; color:var(--muted2); margin-top:2px; letter-spacin
 .app { display:flex; flex:1; overflow:hidden; height:calc(100dvh - 60px); }
 
 /* Wizard panel */
-.wizard { flex:1; overflow-y:auto; padding:36px 28px 40px; max-width:740px; margin:0 auto; width:100%; }
+.wizard { flex:1; overflow-y:auto; padding:36px 28px 40px; max-width:1060px; margin:0 auto; width:100%; }
 
 /* Progress */
 .progress { display:flex; gap:0; margin-bottom:40px; padding:0 4px; }
@@ -323,6 +323,26 @@ input[type=number] { -moz-appearance:textfield; }
 .spinner { width:44px; height:44px; border:3px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; }
 @keyframes spin { to { transform:rotate(360deg); } }
 .spinner-label { font-size:14px; color:var(--muted); }
+
+/* Mode selector */
+#mode-selector { flex:1; display:flex; align-items:center; justify-content:center; padding:40px; }
+.mode-card { background:var(--surface); border:2px solid var(--border); border-radius:var(--radius); padding:32px 28px; cursor:pointer; transition:all .2s; text-align:center; }
+.mode-card:hover { border-color:var(--accent); box-shadow:0 4px 24px rgba(1,84,128,.18); transform:translateY(-2px); }
+.mode-card-title { font-size:20px; font-weight:700; color:var(--text); margin-bottom:10px; letter-spacing:-.01em; }
+.mode-card-desc { font-size:13px; color:var(--muted); line-height:1.6; margin-bottom:18px; }
+.mode-card-tag { font-size:11px; font-weight:600; color:var(--accent); background:var(--accent-dim); border-radius:20px; padding:4px 14px; display:inline-block; }
+
+/* Day checkboxes (basic activities) */
+.day-grid { display:flex; flex-wrap:wrap; gap:10px; margin-top:8px; }
+.day-cb { display:flex; flex-direction:column; align-items:center; gap:5px; cursor:pointer; user-select:none; }
+.day-cb input[type=checkbox] { width:18px; height:18px; accent-color:var(--accent); cursor:pointer; }
+.day-lbl { font-size:11px; text-align:center; color:var(--muted); line-height:1.3; }
+.day-cb.blocked { opacity:0.35; cursor:not-allowed; }
+.day-cb.blocked input { cursor:not-allowed; pointer-events:none; }
+
+/* Basic feasibility result badges */
+.feas-badge-ok   { background:#e8f5e9; color:#2e7d32; border:1px solid #c8e6c9; border-radius:20px; padding:4px 12px; font-size:12px; font-weight:600; }
+.feas-badge-miss { background:#fdf0ef; color:#c0392b; border:1px solid #f5c6c0; border-radius:20px; padding:4px 12px; font-size:12px; font-weight:600; }
 </style>
 </head>
 <body>
@@ -333,7 +353,7 @@ input[type=number] { -moz-appearance:textfield; }
     <div style="flex-shrink:0;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);border-radius:8px;padding:0 11px;height:36px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;letter-spacing:.5px;color:#fff">DSM</div>
     <!-- Title block -->
     <div style="min-width:0">
-      <div style="font-size:15px;font-weight:700;color:#fff;letter-spacing:-.01em;white-space:nowrap">Delegate Schedule Modeler</div>
+      <div style="font-size:15px;font-weight:700;color:#fff;letter-spacing:-.01em;white-space:nowrap">Model Details</div>
       <div style="font-size:11px;color:rgba(255,255,255,.6);letter-spacing:.03em;margin-top:1px">Convention logistics planning tool</div>
     </div>
   </div>
@@ -350,27 +370,76 @@ input[type=number] { -moz-appearance:textfield; }
 
 <div class="app">
 
-<!-- Wizard -->
-<div class="wizard" id="wizard">
+<!-- Mode selector -->
+<div id="mode-selector">
+  <div style="max-width:680px;width:100%">
+    <div style="text-align:center;margin-bottom:36px">
+      <div style="font-size:26px;font-weight:700;color:var(--text);letter-spacing:-.02em;margin-bottom:8px">Choose your model type</div>
+      <div style="font-size:14px;color:var(--muted)">Start with Basic to check general feasibility — switch to Detailed when you're ready to model a specific city.</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+      <div class="mode-card" onclick="selectMode('basic')">
+        <div style="font-size:34px;margin-bottom:14px">⚡</div>
+        <div class="mode-card-title">Basic</div>
+        <div class="mode-card-desc">Quick feasibility check. Enter population and activity schedule to see how many delegates can attend FS1, FS2, and EG. No hotel or bus data needed.</div>
+        <div class="mode-card-tag">2 steps</div>
+      </div>
+      <div class="mode-card" onclick="selectMode('detailed')">
+        <div style="font-size:34px;margin-bottom:14px">🔬</div>
+        <div class="mode-card-title">Detailed</div>
+        <div class="mode-card-desc">Full logistics simulation. Hotels, bus routing, scheduling rules, and complete pipeline. Use when you're ready to model a real city and venue.</div>
+        <div class="mode-card-tag">7 steps</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Basic wizard -->
+<div class="wizard" id="basic-wizard" style="display:none">
+  <div class="progress" id="basic-progress"></div>
+  <div class="nav" style="margin-bottom:0;border-bottom:none;border-top:none;padding:8px 0 0">
+    <button class="btn btn-secondary" id="basic-btn-back-top" onclick="prevBasicStage()">Back</button>
+    <button class="btn btn-primary" id="basic-btn-next-top" onclick="nextBasicStage()">Continue</button>
+  </div>
+  <div id="basic-stage-container"></div>
+  <div class="nav">
+    <button class="btn btn-secondary" id="basic-btn-back" onclick="prevBasicStage()">Back</button>
+    <button class="btn btn-primary" id="basic-btn-next" onclick="nextBasicStage()">Continue</button>
+  </div>
+</div>
+
+<!-- Basic results -->
+<div class="results" id="basic-results"></div>
+
+<!-- Detailed Wizard -->
+<div class="wizard" id="wizard" style="display:none">
   <!-- Progress bar -->
   <div class="progress" id="progress"></div>
+
+  <!-- Top navigation -->
+  <div class="nav" id="nav-top" style="margin-bottom:0;border-bottom:none;border-top:none;padding:8px 0 0">
+    <button class="btn btn-secondary" id="btn-back-top" onclick="prevStage()">Back</button>
+    <button class="btn btn-primary" id="btn-next-top" onclick="nextStage()">Continue</button>
+  </div>
 
   <!-- Stage container -->
   <div id="stage-container"></div>
 
-  <!-- Navigation -->
+  <!-- Bottom navigation -->
   <div class="nav">
-    <button class="btn btn-secondary" id="btn-back" onclick="prevStage()">← Back</button>
-    <button class="btn btn-primary" id="btn-next" onclick="nextStage()">Continue →</button>
+    <button class="btn btn-secondary" id="btn-back" onclick="prevStage()">Back</button>
+    <button class="btn btn-primary" id="btn-next" onclick="nextStage()">Continue</button>
   </div>
 </div>
 
 <!-- Results -->
 <div class="results" id="results">
   <div class="results-header">
-    <h2>✅ Pipeline Complete</h2>
-    <div style="display:flex;gap:10px">
-      <button class="btn btn-secondary" onclick="goBackFromResults()">← Back to wizard</button>
+    <h2>Pipeline Complete</h2>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-secondary" onclick="goBackFromResults()">Back to wizard</button>
+      <button class="btn btn-primary" onclick="jumpToRun()" style="background:#2E7D32;border-color:#2E7D32">Re-run Pipeline</button>
+      <button class="btn btn-secondary" onclick="showCompare()">Compare Models</button>
       <button class="btn-restart" onclick="restart()">Start over</button>
     </div>
   </div>
@@ -385,6 +454,23 @@ input[type=number] { -moz-appearance:textfield; }
     </table>
   </div>
 
+  <div class="result-section" id="daily-activity-section" style="display:none">
+    <h3>Daily Activity Breakdown</h3>
+    <table class="result-table" id="daily-activity-table" style="font-size:11px;width:100%">
+      <thead><tr id="daily-activity-head"></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="result-section" id="daily-available-section" style="display:none">
+    <h3>Guest Room Block</h3>
+    <div style="display:flex;align-items:center;gap:20px;margin-bottom:12px;font-size:12px">
+      <span style="display:flex;align-items:center;gap:6px"><span style="display:inline-block;width:14px;height:14px;background:#015480;border-radius:2px"></span>Pipeline</span>
+      <span style="display:flex;align-items:center;gap:6px"><span style="display:inline-block;width:14px;height:14px;background:#90CAF9;border-radius:2px"></span>TCO Model</span>
+    </div>
+    <canvas id="room-block-chart" style="width:100%;max-height:260px"></canvas>
+  </div>
+
   <div class="result-section">
     <h3>Bus Trip Summary by Stop</h3>
     <table class="result-table" id="stop-table">
@@ -394,9 +480,9 @@ input[type=number] { -moz-appearance:textfield; }
   </div>
 
   <div class="result-section" id="smpw-day-section" style="display:none">
-    <h3>SMPW by Day</h3>
+    <h3>SMPW by Day <span id="smpw-fs-summary" style="font-size:12px;font-weight:400;color:var(--muted)"></span></h3>
     <table class="result-table" id="smpw-day-table">
-      <thead><tr><th>Date</th><th>Groups</th><th>Delegates</th></tr></thead>
+      <thead><tr><th>Date</th><th>Groups</th><th>Delegates</th><th>Fulfills</th></tr></thead>
       <tbody></tbody>
     </table>
   </div>
@@ -410,11 +496,11 @@ input[type=number] { -moz-appearance:textfield; }
     <h3>Downloads</h3>
     <div class="download-row">
       <a class="dl-btn" id="dl-excel" href="#" download>
-        <span class="icon">📊</span>
+        <span class="icon">XLS</span>
         <div class="info"><div class="name">Excel Workbook</div><div class="type">8 sheets · data + formulas</div></div>
       </a>
       <a class="dl-btn" id="dl-report" href="#" download>
-        <span class="icon">📄</span>
+        <span class="icon">DOC</span>
         <div class="info"><div class="name">Word Report</div><div class="type">Leadership narrative + tables</div></div>
       </a>
     </div>
@@ -423,7 +509,7 @@ input[type=number] { -moz-appearance:textfield; }
   <div class="result-section">
     <div style="display:flex;align-items:center;justify-content:space-between">
       <h3 style="margin:0">Run History</h3>
-      <button class="btn-sm" onclick="showCompare()">📊 Compare runs</button>
+      <button class="btn-sm" onclick="showCompare()">Compare runs</button>
     </div>
     <div id="run-history-list" style="margin-top:12px;font-size:13px;color:var(--muted)">No saved runs yet.</div>
   </div>
@@ -439,9 +525,9 @@ input[type=number] { -moz-appearance:textfield; }
 
 <!-- Compare modal -->
 <div class="modal-overlay" id="compare-modal" onclick="if(event.target===this)closeCompare()">
-  <div class="modal">
+  <div class="modal" style="max-width:min(96vw,1100px);width:96vw;overflow-x:auto">
     <button class="modal-close" onclick="closeCompare()">×</button>
-    <h2>Run Comparison</h2>
+    <h2>Model Comparison</h2>
     <div id="compare-content"></div>
   </div>
 </div>
@@ -496,7 +582,7 @@ function renderProgress() {
   const el = document.getElementById('progress');
   el.innerHTML = STAGES.map((s, i) => {
     const cls = i < currentStage ? 'done' : i === currentStage ? 'active' : '';
-    const dot = i < currentStage ? '✓' : i + 1;
+    const dot = i < currentStage ? '&check;' : i + 1;
     const line = i < STAGES.length - 1 ? `<div class="step-line"></div>` : '';
     const clickable = i < currentStage ? `onclick="jumpToStage(${i})" style="cursor:pointer" title="Jump to ${s.label}"` : '';
     return `<div class="step ${cls}" ${clickable}><div class="step-dot">${dot}</div><div class="step-label">${s.label}</div></div>${line}`;
@@ -522,11 +608,17 @@ function renderStage(idx = currentStage) {
   ];
   container.innerHTML = '';
   renderers[idx]();
-  document.getElementById('btn-back').style.visibility = idx === 0 ? 'hidden' : 'visible';
+  const isFirst = idx === 0;
   const isLast = idx === STAGES.length - 1;
-  const nextBtn = document.getElementById('btn-next');
-  nextBtn.textContent = isLast ? '🚀 Run Pipeline' : 'Continue →';
-  nextBtn.className = isLast ? 'btn btn-run' : 'btn btn-primary';
+  const label = isLast ? 'Run Pipeline' : 'Continue';
+  const cls   = isLast ? 'btn btn-run' : 'btn btn-primary';
+  ['','top'].forEach(sfx => {
+    const suf = sfx ? '-' + sfx : '';
+    const back = document.getElementById('btn-back' + suf);
+    const next = document.getElementById('btn-next' + suf);
+    if (back) back.style.visibility = isFirst ? 'hidden' : 'visible';
+    if (next) { next.textContent = label; next.className = cls; }
+  });
 }
 
 // ---- Stage 0: Population ----
@@ -556,69 +648,76 @@ function renderPopulation() {
     <div class="stage-title">Stage 1 — Population</div>
     <div class="stage-desc">Tell us about your delegates and how long they'll stay.</div>
 
-    <!-- Section 1: Population basics -->
-    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:18px 20px;margin-bottom:18px;background:var(--surface2)">
-      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px">Population</div>
-      <div class="row-3">
-        <div class="field" style="margin:0">
+    <!-- Row 1: Population basics + Group Size -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px;align-items:stretch">
+      <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:18px 20px;background:var(--surface2)">
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px">Population</div>
+        <div class="field" style="margin:0 0 12px">
           <label>Population type</label>
           <select id="pop-type" onchange="togglePopType()">
             <option value="delegates" ${p.type!=='groups'?'selected':''}>Total delegates</option>
             <option value="groups" ${p.type==='groups'?'selected':''}>Total groups</option>
           </select>
         </div>
-        <div class="field" style="margin:0">
+        <div class="field" style="margin:0 0 12px">
           <label id="pop-count-label">Count</label>
           ${numCtrl(p.count||'', {id:'pop-count', min:1, ph:'e.g. 5000', wide:true})}
         </div>
-        <div class="field" style="margin:0">
+        <div class="field" style="margin:0 0 12px">
           <label>First check-in date <span style="color:var(--muted);font-weight:400">(window start)</span></label>
           <input type="date" id="win-start" value="${p.windowStart||''}">
         </div>
-      </div>
-      <div class="hint" style="margin-top:10px;margin-bottom:0">Window runs 12 days from check-in. Convention core nights are nights 7–9.</div>
-    </div>
-
-    <!-- Section 2 & 3: Arrivals + Group Size side by side, each in own box -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
-      <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:18px 20px;background:var(--surface2)">
-        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px">Arrivals</div>
         <div class="field" style="margin:0">
-          <label>Arrival Day <span style="color:var(--muted);font-weight:400">(must sum to 100%)</span></label>
-          <table class="arrival-table">
-            <tbody id="arrival-body"></tbody>
-          </table>
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
-            <span class="dist-total" id="arrival-total"></span>
-            <button class="add-row-btn" onclick="normalizeArrival()" style="margin:0">Normalize to 100%</button>
+          <label>Random seed <span style="color:var(--muted);font-weight:400">(same number = identical results)</span></label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="number" id="pop-seed" min="0" value="${data.seed||42}" style="width:120px">
+            <button class="add-row-btn" style="margin:0" onclick="document.getElementById('pop-seed').value=Math.floor(Math.random()*1000000)">Randomize</button>
           </div>
         </div>
+        <div class="hint" style="margin-top:10px;margin-bottom:0">Window runs 12 days from check-in. Convention core nights are nights 7–9.</div>
       </div>
 
       <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:18px 20px;background:var(--surface2)">
         <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px">Group Size</div>
-        <div class="field" style="margin:0">
-          <label>Distribution <span style="color:var(--muted);font-weight:400">(must sum to 100%)</span></label>
-          <table class="dist-table">
-            <thead><tr><th>Delegates/group</th><th>%</th><th></th></tr></thead>
-            <tbody id="gsd-body"></tbody>
-          </table>
-          <button class="add-row-btn" onclick="addGSDRow()">+ Add size</button>
-          <div class="dist-total" id="gsd-total"></div>
-        </div>
+        <label>Distribution <span style="color:var(--muted);font-weight:400">(must sum to 100%)</span></label>
+        <table class="dist-table" style="max-width:340px">
+          <thead><tr><th>Delegates/group</th><th>%</th><th></th></tr></thead>
+          <tbody id="gsd-body"></tbody>
+        </table>
+        <button class="add-row-btn" onclick="addGSDRow()">+ Add size</button>
+        <div class="dist-total" id="gsd-total"></div>
       </div>
     </div>
 
-    <!-- Section 3: Length of Stay -->
-    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:18px 20px;background:var(--surface2)">
-      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Length of Stay</div>
-      <div class="hint" style="margin-bottom:12px">How long delegates stay. Adjust the mix and watch how it affects scheduling availability. Must sum to 100%.</div>
-      <table class="dist-table" style="max-width:340px">
-        <thead><tr><th>Nights</th><th>% of groups</th><th></th></tr></thead>
-        <tbody id="los-body"></tbody>
-      </table>
-      <button class="add-row-btn" onclick="addLOSRow()">+ Add row</button>
-      <div class="dist-total" id="los-total"></div>
+    <!-- Row 2: Arrivals + LOS -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px;align-items:stretch">
+      <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:18px 20px;background:var(--surface2)">
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px">Arrivals</div>
+        <label>Arrival Day <span style="color:var(--muted);font-weight:400">(must sum to 100%)</span></label>
+        <table class="arrival-table">
+          <tbody id="arrival-body"></tbody>
+        </table>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
+          <span class="dist-total" id="arrival-total"></span>
+          <button class="add-row-btn" onclick="normalizeArrival()" style="margin:0">Normalize to 100%</button>
+        </div>
+      </div>
+
+      <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:18px 20px;background:var(--surface2)">
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Length of Stay</div>
+        <div class="hint" style="margin-bottom:12px">How long delegates stay. Must sum to 100%.</div>
+        <table class="dist-table" style="max-width:340px">
+          <thead><tr><th>Nights</th><th>% of groups</th><th></th></tr></thead>
+          <tbody id="los-body"></tbody>
+        </table>
+        <button class="add-row-btn" onclick="addLOSRow()">+ Add row</button>
+        <div class="dist-total" id="los-total"></div>
+      </div>
+    </div>
+
+    <!-- Row 3: Arrival Coverage -->
+    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:18px 20px;background:var(--surface2);margin-bottom:18px">
+      <div id="los-coverage"></div>
     </div>
 
   </div>`;
@@ -638,6 +737,7 @@ function renderPopulation() {
   updateDistTotal('gsd');
   updateDistTotal('los');
   updateArrivalTotal();
+  updateLOSCoverage();
 }
 
 function renderArrivalTable(vals) {
@@ -710,8 +810,82 @@ function updateArrivalTotal() {
   if (!el) return;
   const diff = total - 100;
   el.className = 'dist-total ' + (Math.abs(diff) < 1 ? 'ok' : 'bad');
-  el.textContent = Math.abs(diff) < 1 ? '✓ Total: 100%'
+  el.textContent = Math.abs(diff) < 1 ? 'Total: 100%'
     : `Total: ${total}% (${diff > 0 ? '+' : ''}${diff}% from 100%)`;
+  updateLOSCoverage();
+}
+
+// Coverage matrix: for each LOS row, show which arrival days are valid and
+// what % of arrival weight falls in that valid window.
+// Valid check-in for N-night stay: Day (10-N) through Day 6.
+// (Day 10 = core_stay_end, Day 7 = core_stay_start, so latest_ci = Day 6.)
+function updateLOSCoverage() {
+  const coverageEl = document.getElementById('los-coverage');
+  if (!coverageEl) return;
+
+  // Collect LOS rows
+  const losTbody = document.getElementById('los-body');
+  if (!losTbody) return;
+  const losRows = [...losTbody.querySelectorAll('tr')].map(tr => {
+    const inputs = tr.querySelectorAll('input');
+    return { nights: parseInt(inputs[0]?.value) || 0, pct: parseFloat(inputs[1]?.value) || 0 };
+  }).filter(r => r.nights > 0);
+  if (!losRows.length) { coverageEl.innerHTML = ''; return; }
+
+  // Collect arrival weights keyed by day number (1–5)
+  const arrivalWeights = {};
+  document.querySelectorAll('.arrival-pct').forEach(el => {
+    const day = parseInt(el.dataset.day?.replace('D', '')) || 0;
+    arrivalWeights[day] = parseInt(el.value) || 0;
+  });
+  const totalArrivalWeight = Object.values(arrivalWeights).reduce((s, v) => s + v, 0);
+
+  // Build table rows
+  let anyError = false;
+  let anyWarn = false;
+  const tableRows = losRows.map(({ nights, pct }) => {
+    // Valid check-in: Day (10 - nights) through Day 6
+    const earliestDay = 10 - nights; // e.g. 6n → Day 4, 10n → Day 0 (clamped to 1)
+    const latestDay = 6;
+    const validDays = [];
+    for (let d = Math.max(1, earliestDay); d <= latestDay; d++) validDays.push(d);
+
+    const validWeight = validDays.reduce((s, d) => s + (arrivalWeights[d] || 0), 0);
+    const coveragePct = totalArrivalWeight > 0 ? Math.round(100 * validWeight / totalArrivalWeight) : 0;
+
+    let status, color, bg;
+    if (coveragePct === 0) {
+      status = '✗ No coverage'; color = '#c0392b'; bg = '#fdf0ef'; anyError = true;
+    } else if (coveragePct < 30) {
+      status = `⚠ ${coveragePct}% coverage`; color = '#b7600a'; bg = '#fef9ec'; anyWarn = true;
+    } else {
+      status = `✓ ${coveragePct}% coverage`; color = '#1a7a4a'; bg = 'transparent';
+    }
+
+    const validStr = validDays.length ? `D${validDays[0]}–D${validDays[validDays.length-1]}` : 'none';
+    return `<tr style="background:${bg}">
+      <td style="padding:4px 8px;font-size:12px">${nights}n <span style="color:var(--muted)">(${pct}%)</span></td>
+      <td style="padding:4px 8px;font-size:12px;color:var(--muted)">Valid check-in: ${validStr}</td>
+      <td style="padding:4px 8px;font-size:12px;font-weight:600;color:${color}">${status}</td>
+    </tr>`;
+  }).join('');
+
+  const headerColor = anyError ? '#c0392b' : anyWarn ? '#b7600a' : '#1a7a4a';
+  const headerText = anyError ? 'Arrival coverage — errors must be fixed before continuing'
+    : anyWarn ? 'Arrival coverage — some LOS buckets have low coverage'
+    : 'Arrival coverage — all LOS buckets have sufficient coverage';
+
+  coverageEl.innerHTML = `
+    <div style="font-size:11px;font-weight:700;color:${headerColor};text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">${headerText}</div>
+    <table style="width:100%;border-collapse:collapse;border:1px solid var(--border);border-radius:4px;overflow:hidden">
+      <thead><tr style="background:var(--surface3)">
+        <th style="padding:5px 8px;font-size:11px;text-align:left;color:var(--muted)">LOS</th>
+        <th style="padding:5px 8px;font-size:11px;text-align:left;color:var(--muted)">Valid arrival days</th>
+        <th style="padding:5px 8px;font-size:11px;text-align:left;color:var(--muted)">Your arrival weight</th>
+      </tr></thead>
+      <tbody>${tableRows}</tbody>
+    </table>
+    <div style="font-size:11px;color:var(--muted);margin-top:6px">Valid check-in = days where check-in + LOS still reaches Night 9 (Day 10). Latest always Day 6.</div>`;
 }
 
 function normalizeArrival() {
@@ -735,11 +909,12 @@ function onWindowStartChange() {
 function addLOSRow(nights='', pct='') {
   const tbody = document.getElementById('los-body');
   const tr = document.createElement('tr');
-  tr.innerHTML = `<td>${numCtrl(nights, {min:1, max:30, step:1, ph:'e.g. 5', on:"updateDistTotal('los')"})}</td>
-    <td>${numCtrl(pct, {min:0, max:100, step:1, ph:'0', on:"updateDistTotal('los')"})}</td>
-    <td><button class="remove-btn" onclick="this.closest('tr').remove();updateDistTotal('los')">×</button></td>`;
+  tr.innerHTML = `<td>${numCtrl(nights, {min:1, max:30, step:1, ph:'e.g. 5', on:"updateDistTotal('los');updateLOSCoverage()"})}</td>
+    <td>${numCtrl(pct, {min:0, max:100, step:1, ph:'0', on:"updateDistTotal('los');updateLOSCoverage()"})}</td>
+    <td><button class="remove-btn" onclick="this.closest('tr').remove();updateDistTotal('los');updateLOSCoverage()">×</button></td>`;
   tbody.appendChild(tr);
   updateDistTotal('los');
+  updateLOSCoverage();
 }
 
 function togglePopType() {
@@ -767,7 +942,7 @@ function updateDistTotal(id) {
   const el = document.getElementById(`${id}-total`);
   const diff = Math.abs(total - 100);
   el.className = 'dist-total ' + (diff < 0.01 ? 'ok' : 'bad');
-  el.textContent = diff < 0.01 ? `✓ Total: 100%` : `Total: ${total.toFixed(1)}% (${total < 100 ? total-100 : '+' + (total-100).toFixed(1)}% from 100%)`;
+  el.textContent = diff < 0.01 ? `Total: 100%` : `Total: ${total.toFixed(1)}% (${total < 100 ? total-100 : '+' + (total-100).toFixed(1)}% from 100%)`;
 }
 
 function collectDistRows(id, keyField) {
@@ -798,16 +973,18 @@ function savePopulation() {
     windowEnd = d.toISOString().split('T')[0];
   }
 
-  // Core stay is always nights 7–9 of the window (0-indexed: days 6, 7, 8)
+  // Core stay = nights 6–9 (Days 6–9 = window_start + 5 through + 8)
+  // Earliest checkout = Day 10 = window_start + 9
   let coreStayStart = '', coreStayEnd = '';
   if (windowStart) {
     const cs = new Date(windowStart + 'T00:00:00');
-    cs.setDate(cs.getDate() + 6);
+    cs.setDate(cs.getDate() + 6);   // Day 7 = first blocked convention day
     coreStayStart = cs.toISOString().split('T')[0];
     const ce = new Date(windowStart + 'T00:00:00');
-    ce.setDate(ce.getDate() + 8);
+    ce.setDate(ce.getDate() + 9);   // Day 10 = earliest checkout
     coreStayEnd = ce.toISOString().split('T')[0];
   }
+  data.seed = parseInt(document.getElementById('pop-seed')?.value) || 42;
   data.population = { type, count, gsd, los, arrival, windowStart, windowEnd, coreStayStart, coreStayEnd };
 }
 
@@ -823,6 +1000,33 @@ function validatePopulation() {
   if (!p.windowStart) return 'Enter the first possible check-in date.';
   const arrTotal = Object.values(p.arrival||{}).reduce((s,v)=>s+v,0);
   if (Math.abs(arrTotal - 100) > 2) return `Arrival day-of-week percentages sum to ${arrTotal}% — normalize to 100% first.`;
+
+  // ── Arrival / LOS coverage check ─────────────────────────────────────
+  // For a group with N nights, valid check-in = Day (10-N) through Day 6.
+  // If no arrival weight falls in that range, those groups have no valid
+  // check-in day and the pipeline will fall back silently — block here instead.
+  const arrivalWeights = {};
+  Object.entries(p.arrival || {}).forEach(([k, v]) => {
+    arrivalWeights[parseInt(k.replace('D',''))] = v || 0;
+  });
+  const totalArrW = Object.values(arrivalWeights).reduce((s,v)=>s+v,0);
+
+  const zeroCoverage = (p.los || []).filter(r => (r.pct||0) > 0 && r.nights > 0).filter(r => {
+    const nights = parseInt(r.nights);
+    const earliest = Math.max(1, 10 - nights);
+    const latest = 6;
+    const w = Object.entries(arrivalWeights)
+      .filter(([d]) => parseInt(d) >= earliest && parseInt(d) <= latest)
+      .reduce((s,[,v]) => s + v, 0);
+    return totalArrW > 0 && w === 0;
+  });
+
+  if (zeroCoverage.length > 0) {
+    const affected = zeroCoverage.map(r => `${r.nights}n`).join(', ');
+    return `Arrival/LOS mismatch: the ${affected} LOS bucket(s) have no valid arrival days. ` +
+      `See the coverage table below — add arrival weight to the days highlighted in red.`;
+  }
+
   return null;
 }
 
@@ -1069,6 +1273,21 @@ function renderActivities() {
     </div>
   </div>
 
+  <div class="stage-card" style="border-color:#2E7D32;background:linear-gradient(135deg,#e8f5e9,#c8e6c9)">
+    <div class="stage-title" style="font-size:17px;color:#1B5E20">Field Service Daily Capacity</div>
+    <div class="stage-desc" style="color:#2E7D32">Total delegates allowed in Field Service (FS1 + FS2 combined) on each day. The scheduler draws from this shared pool across both activities. Leave blank for unlimited.</div>
+    <div class="field">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <label style="margin:0">Daily delegate cap</label>
+        <button class="btn-sm" onclick="syncFSCapDates()" style="font-size:11px">Sync dates from FS1/FS2</button>
+      </div>
+      <table class="result-table" style="max-width:380px">
+        <thead><tr><th>Date</th><th>Delegate cap</th><th></th></tr></thead>
+        <tbody id="fs-cap-body"></tbody>
+      </table>
+    </div>
+  </div>
+
   <div class="stage-card" style="border-color:#0F91BB;background:linear-gradient(135deg,#e4f4fa,#cceaf5)">
     <div class="stage-title" style="font-size:17px">SMPW <span style="font-size:13px;font-weight:400;color:var(--muted);margin-left:8px">Service &amp; Ministry Partnership Work</span></div>
     <div class="stage-desc">SMPW is a sub-activity under Field Service. Groups assigned to SMPW fulfill either their FS1 or FS2 requirement and do not ride a bus. Use it to improve bus efficiency by diverting groups that would create under-minimum trips.</div>
@@ -1081,7 +1300,7 @@ function renderActivities() {
     <div class="field">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <label style="margin:0">SMPW dates &amp; delegate caps</label>
-        <button class="add-row-btn" style="margin:0;padding:5px 12px;border:1px solid var(--accent);border-radius:var(--radius-sm);color:var(--accent);background:white;font-size:12px;cursor:pointer" onclick="syncSMPWDates()">↻ Sync from FS1 / FS2 dates</button>
+        <button class="add-row-btn" style="margin:0;padding:5px 12px;border:1px solid var(--accent);border-radius:var(--radius-sm);color:var(--accent);background:white;font-size:12px;cursor:pointer" onclick="syncSMPWDates()">Sync from FS1 / FS2 dates</button>
       </div>
       <table class="dist-table">
         <thead><tr><th>Date</th><th>Max delegates that day</th><th></th></tr></thead>
@@ -1096,6 +1315,14 @@ function renderActivities() {
   const reqs = data.requiredActivities.length ? data.requiredActivities : REQ_DEFAULTS.map(d=>({...d,dates:[],capacity:''}));
   reqs.forEach(a => addReqActivity(a));
   data.optionalActivities.forEach(a => addOptActivity(a));
+
+  // Field Service daily cap — autofill from FS dates if none saved
+  const savedFSCap = data.field_service_cap || {};
+  if (Object.keys(savedFSCap).length) {
+    Object.entries(savedFSCap).sort().forEach(([d, c]) => addFSCapRow(d, c));
+  } else {
+    syncFSCapDates();
+  }
 
   // SMPW hotel checkboxes
   renderSMPWHotels();
@@ -1112,6 +1339,43 @@ function renderActivities() {
     inp.addEventListener('input', updatePrefDepthTotal)
   );
   updatePrefDepthTotal();
+}
+
+function syncFSCapDates() {
+  const fsDates = new Set();
+  document.querySelectorAll('#req-act-list .activity-card').forEach(card => {
+    const name = card.querySelector('.act-name')?.value?.trim();
+    if (name === 'Field Service 1' || name === 'Field Service 2') {
+      const gridId = card.querySelector('[id^="dates-"]')?.id;
+      if (gridId) collectDatesFromGrid(gridId).forEach(d => fsDates.add(d));
+    }
+  });
+  if (fsDates.size === 0) {
+    (data.requiredActivities || []).filter(a =>
+      a.name === 'Field Service 1' || a.name === 'Field Service 2'
+    ).forEach(a => (a.dates || []).forEach(d => fsDates.add(d)));
+  }
+  const tbody = document.getElementById('fs-cap-body');
+  if (!tbody) return;
+  const existing = {};
+  tbody.querySelectorAll('tr').forEach(tr => {
+    const d = tr.querySelector('.fs-cap-date')?.value;
+    const c = tr.querySelector('.fs-cap-del')?.value;
+    if (d) existing[d] = c || '';
+  });
+  tbody.innerHTML = '';
+  [...fsDates].sort().forEach(d => addFSCapRow(d, existing[d] ?? ''));
+}
+
+function addFSCapRow(dateVal='', cap='') {
+  const tbody = document.getElementById('fs-cap-body');
+  if (!tbody) return;
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><input type="date" class="fs-cap-date" value="${esc(dateVal)}" style="width:150px"></td>
+    <td>${numCtrl(cap, {cls:'fs-cap-del', min:1, ph:'e.g. 500', wide:true})}</td>
+    <td><button class="remove-act" style="position:static;margin:0" onclick="this.closest('tr').remove()">×</button></td>`;
+  tbody.appendChild(tr);
 }
 
 function syncSMPWDates() {
@@ -1180,6 +1444,7 @@ function addReqActivity(a={}) {
     list.appendChild(header);
   }
 
+  const isFS = a.name === 'Field Service 1' || a.name === 'Field Service 2';
   const div = document.createElement('div');
   div.className = 'activity-card' + (isMutex ? ' mutex-card' : '');
   div.dataset.actName = a.name || '';
@@ -1193,14 +1458,14 @@ function addReqActivity(a={}) {
         <label>Activity name</label>
         <input type="text" class="act-name" value="${esc(a.name||'')}" placeholder="Activity name" ${isLocked?'readonly style="opacity:.6"':''}>
       </div>
-      <div class="field" style="margin:0">
-        <label>Daily capacity</label>
-        ${numCtrl(a.capacity||'', {cls:'act-cap', min:1, ph:'∞'})}
-      </div>
+      ${isFS
+        ? `<div class="field" style="margin:0"><label>Daily capacity</label><div style="font-size:12px;color:#2E7D32;font-weight:600;padding:6px 0">Shared pool ↓ see Field Service Daily Capacity below</div></div>`
+        : `<div class="field" style="margin:0"><label>Daily capacity</label>${numCtrl(a.capacity||'', {cls:'act-cap', min:1, ph:'∞'})}</div>`
+      }
     </div>
     <div class="field" style="margin:0">
       <label>Available dates <span style="color:var(--muted);font-weight:400">(click to select — greyed dates are convention days)</span></label>
-      <div id="dates-${id}"></div>
+      <div id="dates-${id}" class="${isFS?'fs-dates':''}"></div>
     </div>`;
 
   list.appendChild(div);
@@ -1229,9 +1494,15 @@ function addOptActivity(a={}) {
     </div>
     <div class="row" style="margin-bottom:12px">
       <div class="field" style="margin:0">
-        <label>Daily capacity</label>
+        <label>Daily capacity <span style="color:var(--muted);font-weight:400">(delegates)</span></label>
         ${numCtrl(a.capacity||'', {cls:'opt-cap', min:1, ph:'∞'})}
       </div>
+      <div class="field" style="margin:0">
+        <label>Minimum delegates <span style="color:var(--muted);font-weight:400">(cancel if below)</span></label>
+        ${numCtrl(a.minCapacity||'', {cls:'opt-min-cap', min:1, ph:'no minimum'})}
+      </div>
+    </div>
+    <div class="row" style="margin-bottom:12px">
       <div class="field" style="margin:0">
         <label>Requires Evening Gathering first?</label>
         <select class="opt-prereq-eg">
@@ -1255,7 +1526,7 @@ function renderDateGrid(containerId, selectedDates = []) {
   if (!el) return;
   const windowStart = data.population && data.population.windowStart;
   if (!windowStart) {
-    el.innerHTML = '<div style="font-size:12px;color:var(--warn)">⚠ Enter the check-in date in Stage 1 first.</div>';
+    el.innerHTML = '<div style="font-size:12px;color:var(--warn)">Enter the check-in date in Stage 1 first.</div>';
     return;
   }
   const base = new Date(windowStart + 'T00:00:00');
@@ -1268,7 +1539,7 @@ function renderDateGrid(containerId, selectedDates = []) {
   if (coreStart && coreEnd) {
     const cs = new Date(coreStart + 'T00:00:00');
     const ce = new Date(coreEnd   + 'T00:00:00');
-    for (let d2 = new Date(cs); d2 <= ce; d2.setDate(d2.getDate() + 1)) {
+    for (let d2 = new Date(cs); d2 < ce; d2.setDate(d2.getDate() + 1)) {
       blockedDates.add(d2.toISOString().split('T')[0]);
     }
   }
@@ -1308,7 +1579,7 @@ function renderDateGrid(containerId, selectedDates = []) {
   if (blockedLabels.length) {
     const note = document.createElement('div');
     note.className = 'convention-note';
-    note.textContent = `🚫 Convention days (greyed out, not schedulable): ${blockedLabels.join(', ')}`;
+    note.textContent = `Convention days (greyed out, not schedulable): ${blockedLabels.join(', ')}`;
     el.appendChild(note);
   }
 }
@@ -1351,7 +1622,7 @@ function saveActivities() {
   data.requiredActivities = [...document.querySelectorAll('#req-act-list .activity-card')].map(card => {
     const gridId = card.querySelector('[id^="dates-"]')?.id;
     const dates = gridId ? collectDatesFromGrid(gridId) : [];
-    const capVal = card.querySelector('.act-cap').value.trim();
+    const capVal = card.querySelector('.act-cap')?.value?.trim() || '';
     const defMatch = REQ_DEFAULTS.find(d => d.name === (card.dataset.actName||card.querySelector('.act-name').value.trim()));
     return {
       name: card.querySelector('.act-name').value.trim(),
@@ -1367,16 +1638,27 @@ function saveActivities() {
     const gridId = card.querySelector('[id^="opt-dates-"]')?.id;
     const dates = gridId ? collectDatesFromGrid(gridId) : [];
     const capVal = card.querySelector('.opt-cap').value.trim();
+    const minCapVal = card.querySelector('.opt-min-cap').value.trim();
     const egReq = card.querySelector('.opt-prereq-eg').value;
     return {
       name: card.querySelector('.opt-name').value.trim(),
       wantPct: (parseFloat(card.querySelector('.opt-want').value)||0)/100,
       dates,
       capacity: capVal ? parseInt(capVal) : null,
+      minCapacity: minCapVal ? parseInt(minCapVal) : null,
       prerequisite: null,
       prerequisite_group: egReq === 'yes' ? 'Evening Gathering' : null,
     };
   }).filter(a => a.name);
+
+  // Field Service shared daily cap
+  const fsCap = {};
+  document.querySelectorAll('#fs-cap-body tr').forEach(tr => {
+    const d = tr.querySelector('.fs-cap-date')?.value;
+    const c = tr.querySelector('.fs-cap-del')?.value;
+    if (d && c) fsCap[d] = parseInt(c);
+  });
+  data.field_service_cap = fsCap;
 
   // SMPW
   const smpwHotels = [...document.querySelectorAll('.smpw-hotel-chk:checked')].map(c => c.value);
@@ -1428,7 +1710,7 @@ function renderScheduling() {
         <option value="priority" ${data.orderIsPriority!==false?'selected':''}>Allocation priority — A gets first pick of available dates &amp; capacity; B gets what's left</option>
         <option value="calendar" ${data.orderIsPriority===false?'selected':''}>Calendar order — A must land on an earlier calendar date than B</option>
       </select>
-      <div class="hint">⚠ Most common source of errors. "Allocation priority" is about which activity fills capacity first — it does NOT force an earlier date. Choose "Calendar order" only if groups must literally attend A before B on the calendar.</div>
+      <div class="hint">Most common source of errors. "Allocation priority" is about which activity fills capacity first — it does NOT force an earlier date. Choose "Calendar order" only if groups must literally attend A before B on the calendar.</div>
     </div>
 
     <div class="field">
@@ -1489,10 +1771,6 @@ function renderTransport() {
       </div>
     </div>
 
-    <div class="field">
-      <label>Randomness</label>
-      <div class="hint">Each run uses a different random seed — results will vary slightly between runs with the same inputs, reflecting natural variation in delegate arrivals and assignments.</div>
-    </div>
   </div>`;
 }
 
@@ -1500,7 +1778,6 @@ function saveTransport() {
   data.busMin = parseInt(document.getElementById('bus-min').value) || 40;
   data.busMax = parseInt(document.getElementById('bus-max').value) || 50;
   data.topupThreshold = data.busMax;
-  data.seed = Math.floor(Math.random() * 1000000);
 }
 
 function validateTransport() {
@@ -1701,6 +1978,7 @@ function buildConfig() {
     })),
     optional_activities: data.optionalActivities.map(a=>({
       name: a.name, dates: a.dates, capacity: a.capacity,
+      min_capacity: a.minCapacity || null,
       want_pct: a.wantPct, prerequisite: a.prerequisite || null,
       prerequisite_group: a.prerequisite_group || null,
     })),
@@ -1710,6 +1988,7 @@ function buildConfig() {
     topup_threshold: data.topupThreshold,
     order_is_priority: data.orderIsPriority,
     preference_depth: data.preferenceDepth || { threePlus:40, twoThree:30, oneTwo:20, one:10 },
+    field_service_cap: data.field_service_cap || {},
     smpw: {
       hotels: data.smpw?.hotels || [],
       dates: (data.smpw?.dates || []),
@@ -1733,7 +2012,10 @@ function showResults(result) {
     ? `<div class="stat-card"><div class="stat-label">SMPW Groups</div><div class="stat-value" style="font-size:22px">${s.smpw_groups.toLocaleString()} <span style="font-size:13px;color:var(--muted);font-weight:400">(${s.smpw_delegates.toLocaleString()} del.)</span></div></div>`
     : '';
   const multiStopCard = `<div class="stat-card"><div class="stat-label">Multi-Stop Buses</div><div class="stat-value" style="font-size:22px">${(s.multi_stop_trips||0).toLocaleString()}</div></div>`;
-  const congSvcCard = `<div class="stat-card"><div class="stat-label">Cong. Service Days</div><div class="stat-value" style="font-size:22px">${(s.cong_service_days||0).toLocaleString()}<div style="font-size:11px;color:var(--muted);font-weight:400;margin-top:2px">FS1 + FS2 bus trips</div></div></div>`;
+  const fsTrips = s.fs_bus_trips || {};
+  const fs1Trips = fsTrips['Field Service 1'] || 0;
+  const fs2Trips = fsTrips['Field Service 2'] || 0;
+  const congSvcCard = `<div class="stat-card"><div class="stat-label">One-Way Bus Trips</div><div class="stat-value" style="font-size:22px">${(s.cong_service_days||0).toLocaleString()}<div style="font-size:11px;color:var(--muted);font-weight:400;margin-top:2px">FS1: ${fs1Trips.toLocaleString()} · FS2: ${fs2Trips.toLocaleString()}</div></div></div>`;
   const dblBookCard = s.double_booked_groups > 0
     ? `<div class="stat-card"><div class="stat-label">Same-Day Double</div><div class="stat-value warn" style="font-size:22px">${s.double_booked_groups.toLocaleString()} <span style="font-size:13px;font-weight:400;color:var(--muted)">(${(s.double_booked_delegates||0).toLocaleString()} del.)</span></div></div>`
     : `<div class="stat-card"><div class="stat-label">Same-Day Double</div><div class="stat-value good" style="font-size:22px">0</div></div>`;
@@ -1745,17 +2027,178 @@ function showResults(result) {
     <div class="stat-card"><div class="stat-label">Under Min</div><div class="stat-value ${pct>20?'warn':'good'}">${s.pct_under_min}%</div></div>
     ${smpwCard}${multiStopCard}${congSvcCard}${dblBookCard}`;
 
-  // Activity table
+  // Activity table — mutex groups (e.g. EG) shown as one row with AM/PM sub-rows
   const actBody = document.querySelector('#act-table tbody');
   actBody.innerHTML = '';
   for (const [act, vals] of Object.entries(s.activity_assigned||{})) {
     const groups = typeof vals === 'object' ? vals.groups : vals;
     const delegates = typeof vals === 'object' ? vals.delegates : '—';
-    const rate = s.total_groups > 0 ? Math.round(100*groups/s.total_groups) : 0;
-    const notSched = s.total_groups - groups;
+    const rate = s.total_delegates > 0 && typeof delegates === 'number' ? Math.round(100*delegates/s.total_delegates) : (s.total_groups > 0 ? Math.round(100*groups/s.total_groups) : 0);
+    const notSched = typeof delegates === 'number' ? s.total_delegates - delegates : s.total_groups - groups;
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${esc(act)}</td><td>${groups.toLocaleString()}</td><td>${typeof delegates === 'number' ? delegates.toLocaleString() : delegates}</td><td>${rate}%</td><td>${notSched.toLocaleString()}</td>`;
+    tr.innerHTML = `<td><strong>${esc(act)}</strong></td><td>${groups.toLocaleString()}</td><td>${typeof delegates === 'number' ? delegates.toLocaleString() : delegates}</td><td>${rate}%</td><td>${notSched.toLocaleString()}</td>`;
     actBody.appendChild(tr);
+    // Sub-rows for mutex group breakdown (e.g. EG AM vs EG PM)
+    if (vals.breakdown) {
+      for (const [subName, subVals] of Object.entries(vals.breakdown)) {
+        const subRate = s.total_groups > 0 ? Math.round(100*subVals.groups/s.total_groups) : 0;
+        const subTr = document.createElement('tr');
+        subTr.style.cssText = 'font-size:12px;color:var(--muted)';
+        subTr.innerHTML = `<td style="padding-left:24px">↳ ${esc(subName)}</td><td>${subVals.groups.toLocaleString()}</td><td>${subVals.delegates.toLocaleString()}</td><td>${subRate}%</td><td>—</td>`;
+        actBody.appendChild(subTr);
+      }
+    }
+  }
+
+  // Daily activity breakdown table — activities as rows, days as columns
+  const dailyActs = s.activity_names || [];
+  const dailyData = s.daily_activity || {};
+  const dailySection = document.getElementById('daily-activity-section');
+  if (Object.keys(dailyData).length && dailyActs.length) {
+    dailySection.style.display = 'block';
+    const headRow = document.getElementById('daily-activity-head');
+    const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const sortedDates = Object.keys(dailyData).sort();
+    const fmtDay = iso => { const d = new Date(iso + 'T12:00:00'); return `${DAYS[d.getDay()]}<br><span style="font-size:9px;font-weight:400">${d.getMonth()+1}/${d.getDate()}</span>`; };
+
+    // Header: Activity | Mon 5/26 | Tue 5/27 | ...
+    headRow.innerHTML = '<th style="text-align:left;padding:6px 10px;min-width:140px">Activity</th>'
+      + sortedDates.map(dt => `<th style="text-align:center;padding:6px 8px;white-space:nowrap">${fmtDay(dt)}</th>`).join('');
+
+    const dailyBody = document.querySelector('#daily-activity-table tbody');
+    dailyBody.innerHTML = '';
+    const dailyAvail = s.daily_available || {};
+    const dailySched = s.daily_scheduled_delegates || {};
+
+    // One row per activity
+    for (const act of dailyActs) {
+      const tr = document.createElement('tr');
+      const cells = sortedDates.map(dt => {
+        const v = (dailyData[dt] || {})[act];
+        return v
+          ? `<td style="text-align:center;padding:4px 8px">${v.delegates.toLocaleString()}<br><span style="font-size:9px;color:var(--muted)">${v.groups}g</span></td>`
+          : '<td style="text-align:center;color:var(--muted);padding:4px 8px">—</td>';
+      });
+      tr.innerHTML = `<td style="padding:4px 10px;font-weight:500;white-space:nowrap">${esc(act)}</td>${cells.join('')}`;
+      dailyBody.appendChild(tr);
+    }
+
+    // Separator + Scheduled / Available summary row
+    const sepTr = document.createElement('tr');
+    sepTr.innerHTML = `<td colspan="${sortedDates.length + 1}" style="padding:0;height:1px;background:var(--border)"></td>`;
+    dailyBody.appendChild(sepTr);
+
+    const schedTr = document.createElement('tr');
+    const schedCells = sortedDates.map(dt => {
+      const avail = dailyAvail[dt] || 0;
+      const sched = dailySched[dt] || 0;
+      const pct = avail > 0 ? Math.round(100 * sched / avail) : 0;
+      const color = pct >= 90 ? '#2E7D32' : pct >= 70 ? 'var(--accent)' : '#C65B41';
+      return `<td style="text-align:center;padding:4px 8px;font-weight:600;color:${color}">${sched.toLocaleString()}<br><span style="font-size:9px;font-weight:400;color:var(--muted)">${pct}%</span></td>`;
+    });
+    schedTr.innerHTML = `<td style="padding:4px 10px;font-weight:600;color:var(--muted);font-size:11px">Scheduled</td>${schedCells.join('')}`;
+    dailyBody.appendChild(schedTr);
+
+    // Guest Room Block chart
+    const availSection = document.getElementById('daily-available-section');
+    const totalDel = s.total_delegates || 1;
+
+    // TCO model — fixed reference curve (Days 1–12)
+    const TCO = [5, 30, 70, 85, 95, 100, 100, 100, 100, 50, 30, 10];
+
+    if (s.window_start) {
+      availSection.style.display = 'block';
+      const DAYS_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+      // Build exactly 12 days starting from window_start
+      const windowBase = new Date(s.window_start + 'T12:00:00');
+      const chartDates = Array.from({length: 12}, (_, i) => {
+        const d = new Date(windowBase);
+        d.setDate(d.getDate() + i);
+        return d.toISOString().split('T')[0];
+      });
+
+      const pipelinePcts = chartDates.map(dt => Math.round(100 * (dailyAvail[dt] || 0) / totalDel));
+      const labels = chartDates.map(dt => {
+        const d = new Date(dt + 'T12:00:00');
+        return `${DAYS_SHORT[d.getDay()]} ${d.getMonth()+1}/${d.getDate()}`;
+      });
+      const n = labels.length;
+      const tco = TCO.slice(0, n);
+
+      const canvas = document.getElementById('room-block-chart');
+      const dpr = window.devicePixelRatio || 1;
+      const W = availSection.clientWidth - 48 || 700;
+      const H = 260;
+      canvas.width  = W * dpr;
+      canvas.height = H * dpr;
+      canvas.style.width  = W + 'px';
+      canvas.style.height = H + 'px';
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+
+      const PAD_L = 36, PAD_R = 16, PAD_T = 28, PAD_B = 52;
+      const chartW = W - PAD_L - PAD_R;
+      const chartH = H - PAD_T - PAD_B;
+
+      // Grid lines at 25, 50, 75, 100
+      ctx.font = '10px system-ui, sans-serif';
+      ctx.fillStyle = '#888';
+      ctx.textAlign = 'right';
+      [0, 25, 50, 75, 100].forEach(v => {
+        const y = PAD_T + chartH - (v / 100) * chartH;
+        ctx.beginPath();
+        ctx.strokeStyle = v === 0 ? '#ccc' : '#eee';
+        ctx.lineWidth = 1;
+        ctx.moveTo(PAD_L, y);
+        ctx.lineTo(PAD_L + chartW, y);
+        ctx.stroke();
+        ctx.fillText(v + '%', PAD_L - 4, y + 3.5);
+      });
+
+      // Bars
+      const groupW = chartW / n;
+      const barW = Math.min(groupW * 0.35, 28);
+      const gap = 3;
+
+      for (let i = 0; i < n; i++) {
+        const gx = PAD_L + i * groupW + groupW / 2;
+
+        // Pipeline bar (dark blue)
+        const pPct = pipelinePcts[i] || 0;
+        const pH = (pPct / 100) * chartH;
+        ctx.fillStyle = '#015480';
+        ctx.fillRect(gx - barW - gap / 2, PAD_T + chartH - pH, barW, pH);
+        if (pPct > 0) {
+          ctx.fillStyle = '#015480';
+          ctx.font = 'bold 9px system-ui, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(pPct + '%', gx - barW / 2 - gap / 2, PAD_T + chartH - pH - 4);
+        }
+
+        // TCO bar (light blue)
+        const tPct = tco[i] || 0;
+        const tH = (tPct / 100) * chartH;
+        ctx.fillStyle = '#90CAF9';
+        ctx.fillRect(gx + gap / 2, PAD_T + chartH - tH, barW, tH);
+        if (tPct > 0) {
+          ctx.fillStyle = '#5a9ec9';
+          ctx.font = 'bold 9px system-ui, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(tPct + '%', gx + barW / 2 + gap / 2, PAD_T + chartH - tH - 4);
+        }
+
+        // X-axis label (day of week on top, date below)
+        const parts = labels[i].split(' ');
+        ctx.fillStyle = '#555';
+        ctx.font = 'bold 10px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(parts[0], gx, PAD_T + chartH + 16);
+        ctx.font = '9px system-ui, sans-serif';
+        ctx.fillStyle = '#888';
+        ctx.fillText(parts[1] || '', gx, PAD_T + chartH + 28);
+      }
+    }
   }
 
   // Stop table
@@ -1767,16 +2210,21 @@ function showResults(result) {
     stopBody.appendChild(tr);
   }
 
-  // SMPW by day
+  // SMPW by day — with FS fulfills column and FS summary header
   const smpwByDay = s.smpw_by_day || {};
+  const smpwByFs = s.smpw_by_fs || {};
   const smpwDaySection = document.getElementById('smpw-day-section');
   const smpwDayBody = document.querySelector('#smpw-day-table tbody');
   smpwDayBody.innerHTML = '';
   if (Object.keys(smpwByDay).length) {
     smpwDaySection.style.display = 'block';
+    // Build FS summary string for the header
+    const fsParts = Object.entries(smpwByFs).map(([fs, v]) => `${esc(fs)}: ${v.groups} groups (${v.delegates.toLocaleString()} del.)`);
+    document.getElementById('smpw-fs-summary').textContent = fsParts.length ? '— ' + fsParts.join(' · ') : '';
+    // Rebuild rows — need date→fulfills lookup from smpw_by_day (server now includes it)
     for (const [d, counts] of Object.entries(smpwByDay).sort()) {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${esc(d)}</td><td>${counts.groups.toLocaleString()}</td><td>${counts.delegates.toLocaleString()}</td>`;
+      tr.innerHTML = `<td>${esc(d)}</td><td>${counts.groups.toLocaleString()}</td><td>${counts.delegates.toLocaleString()}</td><td style="color:var(--muted);font-size:12px">${esc(counts.fulfills||'')}</td>`;
       smpwDayBody.appendChild(tr);
     }
   }
@@ -1823,7 +2271,7 @@ async function checkChatAvailability() {
       document.getElementById('chat-send').disabled = true;
       document.getElementById('no-key-note').innerHTML = `
         <div class="no-key-note">
-          💬 Chat analysis requires an Anthropic API key. To enable it:<br>
+          Chat analysis requires an Anthropic API key. To enable it:<br>
           1. Get a key at <strong>console.anthropic.com</strong><br>
           2. Stop the server, run: <code>export ANTHROPIC_API_KEY=sk-ant-...</code><br>
           3. Restart: <code>python3 server.py</code>
@@ -1858,7 +2306,52 @@ async function sendChat() {
     const resp = await fetch('/chat', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ message: text, result_context: pipelineResult?.summary }),
+      body: JSON.stringify({
+        message: text,
+        result_context: {
+          wizard_config: {
+            step1_population: data.population,
+            step2_hotels: {
+              hotels: data.hotels,
+              hotel_to_stop: data.hotelToStop,
+              stop_names: data.stopNames,
+              bus_min: data.busMin,
+              bus_max: data.busMax,
+            },
+            step3_activities: {
+              required_activities: data.requiredActivities,
+              optional_activities: data.optionalActivities,
+              smpw: data.smpw,
+              field_service_daily_cap: data.fieldServiceCap,
+            },
+            step4_scheduling: {
+              order_is_priority: data.orderIsPriority,
+              preference_depth: data.preferenceDepth,
+              same_day_pairs: data.pairingRules,
+              random_seed: data.seed,
+            },
+          },
+          pipeline_results: pipelineResult ? {
+            ...pipelineResult.summary,
+            tco_model_pct: { day1:5, day2:30, day3:70, day4:85, day5:95, day6:100, day7:100, day8:100, day9:100, day10:50, day11:30, day12:10 },
+            room_block_pct: (() => {
+              if (!pipelineResult.summary) return null;
+              const avail = pipelineResult.summary.daily_available || {};
+              const total = pipelineResult.summary.total_delegates || 1;
+              const ws = pipelineResult.summary.window_start;
+              if (!ws) return {};
+              const out = {};
+              for (let i = 0; i < 12; i++) {
+                const d = new Date(ws + 'T12:00:00');
+                d.setDate(d.getDate() + i);
+                const dt = d.toISOString().split('T')[0];
+                out[`Day_${i+1}`] = Math.round(100 * (avail[dt] || 0) / total);
+              }
+              return out;
+            })(),
+          } : null,
+        },
+      }),
     });
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
@@ -1996,37 +2489,38 @@ function renderCompareContent() {
   if (!el) return;
   if (!runs.length) { el.innerHTML = '<p style="color:var(--muted)">No runs saved yet.</p>'; return; }
 
-  // Collect all activity names across runs
   const actNames = [...new Set(runs.flatMap(r => Object.keys(r.summary.activity_assigned || {})))];
+  const cols = runs.length + 1;
 
-  // Helper: highlight best value in a row
   function bestIdx(vals, lowerIsBetter=false) {
-    const nums = vals.map(v => parseFloat(v));
-    const best = lowerIsBetter ? Math.min(...nums.filter(n => !isNaN(n))) : Math.max(...nums.filter(n => !isNaN(n)));
+    const nums = vals.map(v => parseFloat(String(v).replace(/[^0-9.-]/g,'')));
+    const valid = nums.filter(n => !isNaN(n));
+    if (!valid.length) return nums.map(() => false);
+    const best = lowerIsBetter ? Math.min(...valid) : Math.max(...valid);
     return nums.map(n => n === best);
   }
 
   function row(label, vals, lowerIsBetter=false) {
     const bests = bestIdx(vals, lowerIsBetter);
     return `<tr>
-      <td>${label}</td>
-      ${vals.map((v,i) => `<td class="run-val ${bests[i]?'best':''}">${v}</td>`).join('')}
+      <td style="padding:5px 10px;font-size:12px">${label}</td>
+      ${vals.map((v,i) => `<td class="run-val ${bests[i]?'best':''}" style="padding:5px 10px;font-size:12px">${v}</td>`).join('')}
     </tr>`;
   }
 
-  const totalGroups = runs.map(r => r.summary.total_groups.toLocaleString());
-  const totalDels = runs.map(r => r.summary.total_delegates.toLocaleString());
-  const trips = runs.map(r => r.summary.total_trips.toLocaleString());
-  const underMin = runs.map(r => r.summary.pct_under_min + '%');
+  function section(label) {
+    return `<tr class="section-head"><td colspan="${cols}" style="padding:10px 10px 2px">${label}</td></tr>`;
+  }
 
   el.innerHTML = `
-    <table class="compare-table">
+    <div style="overflow-x:auto">
+    <table class="compare-table" style="min-width:520px">
       <thead>
         <tr>
-          <th style="width:180px">Metric</th>
-          ${runs.map(r => `<th class="run-col">
+          <th style="width:200px;padding:8px 10px">Metric</th>
+          ${runs.map(r => `<th class="run-col" style="padding:8px 10px;min-width:140px">
             <div class="run-label-cell">
-              <input value="${esc(r.label)}" onchange="renameRun(${r.id}, this.value)" title="Click to rename">
+              <input value="${esc(r.label)}" onchange="renameRun(${r.id}, this.value)" title="Click to rename" style="width:100%">
               <span class="run-date">${r.date}</span>
               <button class="delete-run-btn" onclick="deleteRun(${r.id})">× remove</button>
             </div>
@@ -2034,24 +2528,37 @@ function renderCompareContent() {
         </tr>
       </thead>
       <tbody>
-        <tr class="section-head"><td colspan="${runs.length+1}">Population</td></tr>
-        ${row('Groups', totalGroups)}
-        ${row('Delegates', totalDels)}
-        <tr class="section-head"><td colspan="${runs.length+1}">Activity Assignment Rate</td></tr>
+        ${section('Population')}
+        ${row('Groups', runs.map(r => r.summary.total_groups.toLocaleString()))}
+        ${row('Delegates', runs.map(r => r.summary.total_delegates.toLocaleString()))}
+
+        ${section('Activity Assignment')}
         ${actNames.map(act => {
           const vals = runs.map(r => {
-            const n = (r.summary.activity_assigned||{})[act] ?? null;
-            if (n === null) return '—';
-            return Math.round(100 * n / r.summary.total_groups) + '%';
+            const v = (r.summary.activity_assigned||{})[act];
+            if (!v) return '—';
+            const grps = typeof v === 'object' ? v.groups : v;
+            const dels = typeof v === 'object' ? v.delegates : '—';
+            const rate = Math.round(100 * grps / r.summary.total_groups);
+            return `${typeof dels === 'number' ? dels.toLocaleString() : '—'} del. (${rate}%)`;
           });
           return row(act, vals);
         }).join('')}
-        <tr class="section-head"><td colspan="${runs.length+1}">Bus Performance</td></tr>
-        ${row('Total trips', trips)}
-        ${row('Under-minimum %', underMin, true)}
+
+        ${section('SMPW')}
+        ${row('SMPW Groups', runs.map(r => (r.summary.smpw_groups||0).toLocaleString()))}
+        ${row('SMPW Delegates', runs.map(r => (r.summary.smpw_delegates||0).toLocaleString()))}
+
+        ${section('Bus Performance')}
+        ${row('Total one-way trips', runs.map(r => (r.summary.total_trips||0).toLocaleString()), false)}
+        ${row('FS1 trips', runs.map(r => ((r.summary.fs_bus_trips||{})['Field Service 1']||0).toLocaleString()))}
+        ${row('FS2 trips', runs.map(r => ((r.summary.fs_bus_trips||{})['Field Service 2']||0).toLocaleString()))}
+        ${row('Under-minimum %', runs.map(r => r.summary.pct_under_min + '%'), true)}
+        ${row('Multi-stop buses', runs.map(r => (r.summary.multi_stop_trips||0).toLocaleString()))}
       </tbody>
     </table>
-    <div style="font-size:11px;color:var(--muted);margin-top:12px">Green = best value in each row. Click a run name to rename it.</div>`;
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:10px">Green = best value in each row. Click a run name to rename it.</div>`;
 }
 
 function goBackFromResults() {
@@ -2059,7 +2566,17 @@ function goBackFromResults() {
   document.getElementById('wizard').style.display = '';
   currentStage = 0;
   renderProgress();
-  renderStage();
+  renderStage(0);
+  scrollToTop();
+}
+
+function jumpToRun() {
+  document.getElementById('results').classList.remove('visible');
+  document.getElementById('wizard').style.display = '';
+  savers[currentStage] && savers[currentStage]();
+  currentStage = STAGES.length - 1;
+  renderProgress();
+  renderStage(currentStage);
   scrollToTop();
 }
 
@@ -2086,10 +2603,595 @@ function esc(s) {
 }
 
 // ============================================================
-// Init
+// BASIC MODE
 // ============================================================
-renderProgress();
-renderStage(0);
+
+let appMode = null;
+let basicStage = 0;
+
+const BASIC_STAGES = [
+  { id: 'population', label: 'Population' },
+  { id: 'activities', label: 'Activities' },
+];
+
+const dataBasic = {
+  seed: 42,
+  population: {},
+  activities: [
+    { name: 'Field Service 1',   slug: 'fs1', days: [] },
+    { name: 'Field Service 2',   slug: 'fs2', days: [] },
+    { name: 'Evening Gathering', slug: 'eg',  days: [], sessionsPerDay: 2 },
+  ],
+};
+
+const DAY_DOW = ['Sat','Sun','Mon','Tue','Wed','Thu','Fri','Sat','Sun','Mon','Tue','Wed'];
+const BASIC_BLOCKED = new Set([7, 8, 9]);
+
+// ---- Mode selection ----
+
+function selectMode(mode) {
+  appMode = mode;
+  document.getElementById('mode-selector').style.display = 'none';
+  if (mode === 'detailed') {
+    document.getElementById('wizard').style.display = '';
+    renderProgress();
+    renderStage(0);
+  } else {
+    document.getElementById('basic-wizard').style.display = '';
+    basicStage = 0;
+    renderBasicProgress();
+    renderBasicStage(0);
+  }
+}
+
+// ---- Basic progress bar ----
+
+function renderBasicProgress() {
+  const el = document.getElementById('basic-progress');
+  el.innerHTML = BASIC_STAGES.map((s, i) => {
+    const cls = i < basicStage ? 'done' : i === basicStage ? 'active' : '';
+    const dot = i < basicStage ? '&check;' : i + 1;
+    const line = i < BASIC_STAGES.length - 1 ? '<div class="step-line"></div>' : '';
+    const clickable = i < basicStage ? `onclick="basicJumpTo(${i})" style="cursor:pointer"` : '';
+    return `<div class="step ${cls}" ${clickable}><div class="step-dot">${dot}</div><div class="step-label">${s.label}</div></div>${line}`;
+  }).join('');
+}
+
+function basicJumpTo(idx) {
+  saveBasicStage();
+  basicStage = idx;
+  renderBasicProgress();
+  renderBasicStage(idx);
+  window.scrollTo(0, 0);
+}
+
+// ---- Basic navigation ----
+
+function renderBasicStage(idx) {
+  const renderers = [renderBasicPopulation, renderBasicActivities];
+  document.getElementById('basic-stage-container').innerHTML = '';
+  renderers[idx]();
+  const isFirst = idx === 0;
+  const isLast = idx === BASIC_STAGES.length - 1;
+  ['', '-top'].forEach(sfx => {
+    const back = document.getElementById('basic-btn-back' + sfx);
+    const next = document.getElementById('basic-btn-next' + sfx);
+    if (back) back.style.visibility = isFirst ? 'hidden' : 'visible';
+    if (next) {
+      next.textContent = isLast ? 'Run Feasibility' : 'Continue';
+      next.className   = isLast ? 'btn btn-run'     : 'btn btn-primary';
+    }
+  });
+}
+
+function nextBasicStage() {
+  saveBasicStage();
+  const validators = [validateBasicPopulation, validateBasicActivities];
+  const err = validators[basicStage]();
+  if (err) { alert(err); return; }
+  if (basicStage === BASIC_STAGES.length - 1) { runFeasibility(); return; }
+  basicStage++;
+  renderBasicProgress();
+  renderBasicStage(basicStage);
+  window.scrollTo(0, 0);
+}
+
+function prevBasicStage() {
+  if (basicStage === 0) return;
+  saveBasicStage();
+  basicStage--;
+  renderBasicProgress();
+  renderBasicStage(basicStage);
+  window.scrollTo(0, 0);
+}
+
+function saveBasicStage() {
+  if (basicStage === 0) saveBasicPopulation();
+  if (basicStage === 1) saveBasicActivities();
+}
+
+function backToBasicWizard() {
+  document.getElementById('basic-results').classList.remove('visible');
+  document.getElementById('basic-wizard').style.display = '';
+  basicStage = 1;
+  renderBasicProgress();
+  renderBasicStage(1);
+  window.scrollTo(0, 0);
+}
+
+// ---- Step 1: Population ----
+
+function renderBasicPopulation() {
+  const p = dataBasic.population;
+  document.getElementById('basic-stage-container').innerHTML = `
+  <div class="stage-card">
+    <div class="stage-title">Step 1 — Population</div>
+    <div class="stage-desc">Describe your delegate population. No specific dates needed — the 12-day window begins on a Saturday (Day 1 = Sat … Day 12 = Wed).</div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px;align-items:stretch">
+      <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:18px 20px;background:var(--surface2)">
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px">Population</div>
+        <div class="field" style="margin:0 0 12px">
+          <label>Population type</label>
+          <select id="b-pop-type" onchange="b_togglePopType()">
+            <option value="delegates" ${p.type!=='groups'?'selected':''}>Total delegates</option>
+            <option value="groups"    ${p.type==='groups'?'selected':''}>Total groups</option>
+          </select>
+        </div>
+        <div class="field" style="margin:0 0 12px">
+          <label id="b-pop-count-label">${p.type==='groups'?'Total groups':'Total delegates'}</label>
+          ${numCtrl(p.count||'', {id:'b-pop-count', min:1, ph:'e.g. 5000', wide:true})}
+        </div>
+        <div class="field" style="margin:0">
+          <label>Random seed</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="number" id="b-pop-seed" min="0" value="${dataBasic.seed||42}" style="width:120px">
+            <button class="add-row-btn" style="margin:0" onclick="document.getElementById('b-pop-seed').value=Math.floor(Math.random()*1000000)">Randomize</button>
+          </div>
+        </div>
+        <div class="hint" style="margin-top:10px;margin-bottom:0">Convention core days are 7–9 (Fri–Sun). Latest check-in is Day 6.</div>
+      </div>
+
+      <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:18px 20px;background:var(--surface2)">
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px">Group Size</div>
+        <label>Distribution <span style="color:var(--muted);font-weight:400">(must sum to 100%)</span></label>
+        <table class="dist-table" style="max-width:340px">
+          <thead><tr><th>Delegates/group</th><th>%</th><th></th></tr></thead>
+          <tbody id="b-gsd-body"></tbody>
+        </table>
+        <button class="add-row-btn" onclick="b_addGSDRow()">+ Add size</button>
+        <div class="dist-total" id="b-gsd-total"></div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px;align-items:stretch">
+      <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:18px 20px;background:var(--surface2)">
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px">Arrivals</div>
+        <label>Arrival Day <span style="color:var(--muted);font-weight:400">(must sum to 100%)</span></label>
+        <table class="arrival-table"><tbody id="b-arrival-body"></tbody></table>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
+          <span class="dist-total" id="b-arrival-total"></span>
+          <button class="add-row-btn" onclick="b_normalizeArrival()" style="margin:0">Normalize to 100%</button>
+        </div>
+      </div>
+
+      <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:18px 20px;background:var(--surface2)">
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Length of Stay</div>
+        <div class="hint" style="margin-bottom:12px">How long delegates stay. Must sum to 100%.</div>
+        <table class="dist-table" style="max-width:340px">
+          <thead><tr><th>Nights</th><th>% of groups</th><th></th></tr></thead>
+          <tbody id="b-los-body"></tbody>
+        </table>
+        <button class="add-row-btn" onclick="b_addLOSRow()">+ Add row</button>
+        <div class="dist-total" id="b-los-total"></div>
+      </div>
+    </div>
+
+    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:18px 20px;background:var(--surface2)">
+      <div id="b-los-coverage"></div>
+    </div>
+  </div>`;
+
+  const gsdRows = p.gsd?.length ? p.gsd : GSD_DEFAULTS;
+  gsdRows.forEach(r => b_addGSDRow(r.size, r.pct));
+  const losRows = p.los?.length ? p.los : LOS_DEFAULTS;
+  losRows.forEach(r => b_addLOSRow(r.nights, r.pct));
+  b_renderArrivalTable(p.arrival || ARRIVAL_DOW_DEFAULTS);
+  b_updateDistTotal('gsd');
+  b_updateDistTotal('los');
+  b_updateArrivalTotal();
+  b_updateLOSCoverage();
+}
+
+function b_addGSDRow(size='', pct='') {
+  const tbody = document.getElementById('b-gsd-body');
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td>${numCtrl(size, {min:1, ph:'e.g. 2', on:"b_updateDistTotal('gsd')"})}</td>
+    <td>${numCtrl(pct, {min:0, max:100, step:1, ph:'0', on:"b_updateDistTotal('gsd')"})}</td>
+    <td><button class="remove-btn" onclick="this.closest('tr').remove();b_updateDistTotal('gsd')">×</button></td>`;
+  tbody.appendChild(tr);
+}
+
+function b_addLOSRow(nights='', pct='') {
+  const tbody = document.getElementById('b-los-body');
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td>${numCtrl(nights, {min:1, max:30, step:1, ph:'e.g. 5', on:"b_updateDistTotal('los');b_updateLOSCoverage()"})}</td>
+    <td>${numCtrl(pct, {min:0, max:100, step:1, ph:'0', on:"b_updateDistTotal('los');b_updateLOSCoverage()"})}</td>
+    <td><button class="remove-btn" onclick="this.closest('tr').remove();b_updateDistTotal('los');b_updateLOSCoverage()">×</button></td>`;
+  tbody.appendChild(tr);
+  b_updateDistTotal('los');
+  b_updateLOSCoverage();
+}
+
+function b_updateDistTotal(id) {
+  const tbody = document.getElementById(`b-${id}-body`);
+  if (!tbody) return;
+  const inputs = [...tbody.querySelectorAll('td:nth-child(2) input')];
+  const total  = inputs.reduce((s, i) => s + (parseFloat(i.value) || 0), 0);
+  const el = document.getElementById(`b-${id}-total`);
+  if (!el) return;
+  const diff = Math.abs(total - 100);
+  el.className = 'dist-total ' + (diff < 0.01 ? 'ok' : 'bad');
+  el.textContent = diff < 0.01 ? 'Total: 100%'
+    : `Total: ${total.toFixed(1)}% (${(total - 100 >= 0 ? '+' : '') + (total - 100).toFixed(1)}% from 100%)`;
+}
+
+function b_renderArrivalTable(vals) {
+  const tbody = document.getElementById('b-arrival-body');
+  tbody.innerHTML = '';
+  [
+    { key:'D1', label:'Day 1 (Sat)' },
+    { key:'D2', label:'Day 2 (Sun)' },
+    { key:'D3', label:'Day 3 (Mon)' },
+    { key:'D4', label:'Day 4 (Tue)' },
+    { key:'D5', label:'Day 5 (Wed)' },
+  ].forEach(({ key, label }) => {
+    const pct = vals[key] !== undefined ? vals[key] : ARRIVAL_DOW_DEFAULTS[key];
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${label}</td>
+      <td style="display:flex;align-items:center;gap:6px">
+        <div class="num-ctrl">
+          <button type="button" onclick="b_stepArrival('${key}',-1)">−</button>
+          <input type="number" min="0" max="100" step="1" value="${pct}" class="b-arrival-pct" data-day="${key}" oninput="b_updateArrivalTotal()">
+          <button type="button" onclick="b_stepArrival('${key}',1)">+</button>
+        </div>
+        <span style="font-size:12px;color:var(--muted)">%</span>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function b_stepArrival(day, delta) {
+  const input = document.querySelector(`.b-arrival-pct[data-day="${day}"]`);
+  if (!input) return;
+  input.value = Math.max(0, Math.min(100, parseInt(input.value || 0) + delta));
+  b_updateArrivalTotal();
+}
+
+function b_updateArrivalTotal() {
+  const total = [...document.querySelectorAll('.b-arrival-pct')].reduce((s, el) => s + (parseInt(el.value) || 0), 0);
+  const el = document.getElementById('b-arrival-total');
+  if (!el) return;
+  const diff = total - 100;
+  el.className = 'dist-total ' + (Math.abs(diff) < 1 ? 'ok' : 'bad');
+  el.textContent = Math.abs(diff) < 1 ? 'Total: 100%'
+    : `Total: ${total}% (${diff > 0 ? '+' : ''}${diff}% from 100%)`;
+  b_updateLOSCoverage();
+}
+
+function b_updateLOSCoverage() {
+  const coverageEl = document.getElementById('b-los-coverage');
+  if (!coverageEl) return;
+  const losTbody = document.getElementById('b-los-body');
+  if (!losTbody) return;
+  const losRows = [...losTbody.querySelectorAll('tr')].map(tr => {
+    const inputs = tr.querySelectorAll('input');
+    return { nights: parseInt(inputs[0]?.value) || 0, pct: parseFloat(inputs[1]?.value) || 0 };
+  }).filter(r => r.nights > 0);
+  if (!losRows.length) { coverageEl.innerHTML = ''; return; }
+
+  const arrivalWeights = {};
+  document.querySelectorAll('.b-arrival-pct').forEach(el => {
+    const day = parseInt(el.dataset.day?.replace('D', '')) || 0;
+    arrivalWeights[day] = parseInt(el.value) || 0;
+  });
+  const totalArrivalWeight = Object.values(arrivalWeights).reduce((s, v) => s + v, 0);
+
+  let anyError = false, anyWarn = false;
+  const tableRows = losRows.map(({ nights, pct }) => {
+    const validDays = [];
+    for (let d = Math.max(1, 10 - nights); d <= 6; d++) validDays.push(d);
+    const validWeight  = validDays.reduce((s, d) => s + (arrivalWeights[d] || 0), 0);
+    const coveragePct  = totalArrivalWeight > 0 ? Math.round(100 * validWeight / totalArrivalWeight) : 0;
+    let status, color, bg;
+    if (coveragePct === 0)    { status = '✗ No coverage';           color = '#c0392b'; bg = '#fdf0ef'; anyError = true; }
+    else if (coveragePct < 30){ status = `⚠ ${coveragePct}% coverage`; color = '#b7600a'; bg = '#fef9ec'; anyWarn = true; }
+    else                      { status = `✓ ${coveragePct}% coverage`; color = '#1a7a4a'; bg = 'transparent'; }
+    const validStr = validDays.length ? `D${validDays[0]}–D${validDays[validDays.length-1]}` : 'none';
+    return `<tr style="background:${bg}">
+      <td style="padding:4px 8px;font-size:12px">${nights}n <span style="color:var(--muted)">(${pct}%)</span></td>
+      <td style="padding:4px 8px;font-size:12px;color:var(--muted)">Valid check-in: ${validStr}</td>
+      <td style="padding:4px 8px;font-size:12px;font-weight:600;color:${color}">${status}</td>
+    </tr>`;
+  }).join('');
+
+  const headerColor = anyError ? '#c0392b' : anyWarn ? '#b7600a' : '#1a7a4a';
+  const headerText  = anyError ? 'Arrival coverage — errors must be fixed before continuing'
+    : anyWarn ? 'Arrival coverage — some LOS buckets have low coverage'
+    : 'Arrival coverage — all LOS buckets have sufficient coverage';
+
+  coverageEl.innerHTML = `
+    <div style="font-size:11px;font-weight:700;color:${headerColor};text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">${headerText}</div>
+    <table style="width:100%;border-collapse:collapse;border:1px solid var(--border);border-radius:4px;overflow:hidden">
+      <thead><tr style="background:var(--surface3)">
+        <th style="padding:5px 8px;font-size:11px;text-align:left;color:var(--muted)">LOS</th>
+        <th style="padding:5px 8px;font-size:11px;text-align:left;color:var(--muted)">Valid arrival days</th>
+        <th style="padding:5px 8px;font-size:11px;text-align:left;color:var(--muted)">Your arrival weight</th>
+      </tr></thead>
+      <tbody>${tableRows}</tbody>
+    </table>
+    <div style="font-size:11px;color:var(--muted);margin-top:6px">Latest check-in always Day 6. Convention core days 7–9 (Fri–Sun).</div>`;
+}
+
+function b_normalizeArrival() {
+  const inputs = [...document.querySelectorAll('.b-arrival-pct')];
+  const total  = inputs.reduce((s, el) => s + (parseInt(el.value) || 0), 0);
+  if (total === 0) return;
+  const scaled    = inputs.map(el => (parseInt(el.value) || 0) / total * 100);
+  const floors    = scaled.map(Math.floor);
+  const remainders = scaled.map((v, i) => ({ r: v - floors[i], i })).sort((a, b) => b.r - a.r);
+  const deficit   = 100 - floors.reduce((s, v) => s + v, 0);
+  for (let k = 0; k < deficit; k++) floors[remainders[k].i]++;
+  inputs.forEach((el, i) => { el.value = floors[i]; });
+  b_updateArrivalTotal();
+}
+
+function b_togglePopType() {
+  const v = document.getElementById('b-pop-type').value;
+  document.getElementById('b-pop-count-label').textContent = v === 'groups' ? 'Total groups' : 'Total delegates';
+}
+
+function saveBasicPopulation() {
+  const type  = document.getElementById('b-pop-type')?.value || 'delegates';
+  const count = parseInt(document.getElementById('b-pop-count')?.value) || 0;
+  const gsd   = collectBasicDistRows('gsd', 'size');
+  const los   = collectBasicDistRows('los', 'nights');
+  const arrival = {};
+  document.querySelectorAll('.b-arrival-pct').forEach(el => { arrival[el.dataset.day] = parseInt(el.value); });
+  dataBasic.seed       = parseInt(document.getElementById('b-pop-seed')?.value) || 42;
+  dataBasic.population = { type, count, gsd, los, arrival };
+}
+
+function collectBasicDistRows(id, keyField) {
+  const tbody = document.getElementById(`b-${id}-body`);
+  if (!tbody) return [];
+  return [...tbody.querySelectorAll('tr')].map(tr => {
+    const inputs = tr.querySelectorAll('input');
+    return { [keyField]: inputs[0]?.value, pct: parseFloat(inputs[1]?.value) || 0 };
+  }).filter(r => r[keyField]);
+}
+
+function validateBasicPopulation() {
+  const p = dataBasic.population;
+  if (!p.count || p.count < 1) return 'Enter a valid delegate or group count.';
+  if (!p.gsd || p.gsd.length < 1) return 'Add at least one group size.';
+  const gsdSum = p.gsd.reduce((s, r) => s + (r.pct || 0), 0);
+  if (Math.abs(gsdSum - 100) > 5) return `Group size percentages sum to ${gsdSum.toFixed(1)}% — should total 100%.`;
+  if (!p.los || p.los.length < 1) return 'Add at least one length-of-stay row.';
+  const losSum = p.los.reduce((s, r) => s + (r.pct || 0), 0);
+  if (Math.abs(losSum - 100) > 5) return `Length of stay percentages sum to ${losSum.toFixed(1)}% — should total 100%.`;
+  const arrTotal = Object.values(p.arrival || {}).reduce((s, v) => s + v, 0);
+  if (Math.abs(arrTotal - 100) > 2) return `Arrival percentages sum to ${arrTotal}% — normalize to 100% first.`;
+  return null;
+}
+
+// ---- Step 2: Activities ----
+
+function renderBasicActivities() {
+  const acts = dataBasic.activities;
+
+  function dayGrid(slug, savedDays) {
+    const saved = new Set(savedDays || []);
+    return `<div class="day-grid" id="b-act-days-${slug}">${
+      Array.from({length: 12}, (_, i) => i + 1).map(d => {
+        const blocked = BASIC_BLOCKED.has(d);
+        const checked  = !blocked && saved.has(d) ? 'checked' : '';
+        const disabled = blocked ? 'disabled' : '';
+        return `<label class="day-cb${blocked ? ' blocked' : ''}">
+          <input type="checkbox" value="${d}" ${checked} ${disabled}>
+          <span class="day-lbl">${DAY_DOW[d-1]}<br><span style="opacity:.65">Day ${d}</span></span>
+        </label>`;
+      }).join('')
+    }</div>`;
+  }
+
+  document.getElementById('basic-stage-container').innerHTML = `
+  <div class="stage-card">
+    <div class="stage-title">Step 2 — Activities</div>
+    <div class="stage-desc">Select which days each mandatory activity runs. Days 7–9 (Fri–Sun of the second week) are always blocked. Delegates cannot attend on their check-in or checkout day.</div>
+
+    ${acts.map(act => `
+      <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px;background:var(--surface2)">
+        <div style="font-size:14px;font-weight:700;margin-bottom:14px">${esc(act.name)}</div>
+        ${act.slug === 'eg' ? `
+          <div class="field" style="margin-bottom:14px">
+            <label>Sessions per day <span style="color:var(--muted);font-weight:400">(e.g. 2 = EG AM + EG PM on same day)</span></label>
+            <input type="number" id="b-eg-sessions" min="1" max="10" value="${act.sessionsPerDay || 2}" style="width:80px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm)">
+          </div>` : ''}
+        <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:6px">Available days</div>
+        ${dayGrid(act.slug, act.days)}
+      </div>
+    `).join('')}
+  </div>`;
+}
+
+function saveBasicActivities() {
+  dataBasic.activities.forEach(act => {
+    const container = document.getElementById(`b-act-days-${act.slug}`);
+    if (container) {
+      act.days = [...container.querySelectorAll('input[type=checkbox]:checked')].map(cb => parseInt(cb.value));
+    }
+    if (act.slug === 'eg') {
+      act.sessionsPerDay = parseInt(document.getElementById('b-eg-sessions')?.value) || 2;
+    }
+  });
+}
+
+function validateBasicActivities() {
+  for (const act of dataBasic.activities) {
+    if (!act.days.length) return `"${act.name}" has no days selected — check at least one available day.`;
+  }
+  return null;
+}
+
+// ---- Feasibility calculation ----
+
+function mulberry32(a) {
+  return function() {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+function runFeasibility() {
+  const p   = dataBasic.population;
+  const rng = mulberry32(dataBasic.seed || 42);
+
+  const los      = p.los?.length ? p.los : LOS_DEFAULTS;
+  const losTotal = los.reduce((s, r) => s + (r.pct || 0), 0) || 100;
+  const losDist  = los.map(r => ({ val: parseInt(r.nights), prob: r.pct / losTotal }));
+
+  const arrival  = p.arrival || ARRIVAL_DOW_DEFAULTS;
+  const arrTotal = Object.values(arrival).reduce((s, v) => s + v, 0) || 100;
+  const arrDist  = Object.entries(arrival)
+    .map(([k, v]) => ({ val: parseInt(k.replace('D', '')), prob: v / arrTotal }))
+    .filter(d => d.prob > 0);
+
+  const gsd      = p.gsd?.length ? p.gsd : GSD_DEFAULTS;
+  const gsdTotal = gsd.reduce((s, r) => s + (r.pct || 0), 0) || 100;
+  const gsdDist  = gsd.map(r => ({ val: parseInt(r.size), prob: r.pct / gsdTotal }));
+
+  function sample(dist) {
+    const r = rng();
+    let cum = 0;
+    for (const { val, prob } of dist) { cum += prob; if (r <= cum) return val; }
+    return dist[dist.length - 1].val;
+  }
+
+  // Total delegates to simulate
+  const avgSize = gsd.reduce((s, r) => s + parseInt(r.size || 0) * (r.pct || 0) / gsdTotal, 0);
+  const totalDelegates = p.type === 'groups'
+    ? Math.round((p.count || 0) * avgSize)
+    : (p.count || 0);
+
+  // Simulate groups
+  const groups = [];
+  let delegateCount = 0;
+  while (delegateCount < totalDelegates) {
+    const size     = sample(gsdDist);
+    const checkin  = sample(arrDist);                   // Day 1–5
+    const nights   = sample(losDist);
+    const checkout = Math.min(13, checkin + nights);    // morning after last night
+    groups.push({ size, checkin, checkout });
+    delegateCount += size;
+  }
+
+  // Per-activity feasibility
+  const results = dataBasic.activities.map(act => {
+    const actDays = new Set(act.days);
+    const sessions = act.sessionsPerDay || 1;
+    let miss = 0;
+    const demand = {};
+    for (let d = 1; d <= 12; d++) demand[d] = 0;
+
+    for (const grp of groups) {
+      const feasible = [];
+      for (let d = grp.checkin + 1; d <= grp.checkout - 1; d++) {
+        if (d >= 1 && d <= 12 && !BASIC_BLOCKED.has(d) && actDays.has(d)) feasible.push(d);
+      }
+      if (feasible.length === 0) {
+        miss += grp.size;
+      } else {
+        const share = grp.size / feasible.length;
+        feasible.forEach(d => { demand[d] += share; });
+      }
+    }
+
+    return { name: act.name, slug: act.slug, miss, total: delegateCount, demand, sessions, actDays };
+  });
+
+  showBasicResults(results, delegateCount);
+}
+
+function showBasicResults(results, totalDelegates) {
+  document.getElementById('basic-wizard').style.display = 'none';
+  const resultsDiv = document.getElementById('basic-results');
+  resultsDiv.classList.add('visible');
+
+  const summaryChips = results.map(r => {
+    const cls   = r.miss > 0 ? 'feas-badge-miss' : 'feas-badge-ok';
+    const label = r.miss > 0
+      ? `${r.miss.toLocaleString()} miss ${r.name}`
+      : `All attend ${r.name}`;
+    return `<span class="${cls}">${label}</span>`;
+  }).join('');
+
+  resultsDiv.innerHTML = `
+    <div class="results-header">
+      <h2>Feasibility Analysis</h2>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-secondary" onclick="backToBasicWizard()">Back to Activities</button>
+        <button class="btn-restart" onclick="restart()">Start over</button>
+      </div>
+    </div>
+
+    <div class="result-section" style="border-left:3px solid var(--accent);padding-left:16px;background:var(--surface2);border-radius:0 var(--radius-sm) var(--radius-sm) 0;padding:14px 14px 14px 18px">
+      <div style="font-size:13px;color:var(--muted);margin-bottom:10px">
+        <strong style="color:var(--text)">${totalDelegates.toLocaleString()}</strong> total delegates simulated &nbsp;·&nbsp;
+        Best-case: delegates spread optimally across all feasible days
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">${summaryChips}</div>
+    </div>
+
+    ${results.map(act => {
+      const badge = act.miss > 0
+        ? `<span class="feas-badge-miss">${act.miss.toLocaleString()} delegates cannot attend</span>`
+        : `<span class="feas-badge-ok">All delegates can attend</span>`;
+      const hasSession = act.sessions > 1;
+      const sessionHeader = hasSession ? `<th>Per session (÷${act.sessions})</th>` : '';
+
+      const rows = Array.from({length: 12}, (_, i) => i + 1).map(d => {
+        const blocked  = BASIC_BLOCKED.has(d);
+        const runs     = act.actDays.has(d);
+        const minAtt   = runs && !blocked ? Math.ceil(act.demand[d] || 0) : 0;
+        const perSess  = hasSession && minAtt > 0 ? Math.ceil(minAtt / act.sessions) : 0;
+        const dimStyle = blocked ? 'color:var(--muted2);background:#f8f9fa' : '';
+        return `<tr style="${dimStyle}">
+          <td>Day ${d}</td>
+          <td>${DAY_DOW[d-1]}</td>
+          <td>${blocked ? '<span style="color:var(--muted2)">Blocked</span>' : runs ? 'Yes' : 'No'}</td>
+          <td>${blocked || !runs ? '—' : minAtt.toLocaleString()}</td>
+          ${hasSession ? `<td>${blocked || !runs ? '—' : perSess.toLocaleString()}</td>` : ''}
+        </tr>`;
+      }).join('');
+
+      return `
+        <div class="result-section">
+          <h3>${esc(act.name)} <span style="margin-left:10px">${badge}</span></h3>
+          ${act.miss > 0 ? `<div style="font-size:12px;color:var(--error);margin-bottom:10px">${act.miss.toLocaleString()} delegates have no feasible day for this activity given their arrival day and length of stay.</div>` : ''}
+          <table class="result-table">
+            <thead><tr><th>Day</th><th>Day of Week</th><th>Runs?</th><th>Min. Attendance</th>${sessionHeader}</tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+    }).join('')}`;
+}
+
+// ============================================================
+// Init — mode selector is shown by default; wizard renders on selectMode()
+// ============================================================
 
 // Close native date picker as soon as a date is chosen
 document.addEventListener('change', e => {
