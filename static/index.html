@@ -2649,16 +2649,48 @@ function defaultEGSchedule() {
   return sched;
 }
 
+// Pre-loaded from reverse-engineered schedule data (6,000 delegate convention)
+const _preloadedEGSchedule = defaultEGSchedule();
+Object.assign(_preloadedEGSchedule[4],  { show1: { enabled: true,  min: '', max: 1000 }, show2: { enabled: false, min: '', max: '' } });
+Object.assign(_preloadedEGSchedule[5],  { show1: { enabled: true,  min: '', max: 1800 }, show2: { enabled: false, min: '', max: '' } });
+Object.assign(_preloadedEGSchedule[6],  { show1: { enabled: true,  min: '', max: 1300 }, show2: { enabled: false, min: '', max: '' } });
+Object.assign(_preloadedEGSchedule[10], { show1: { enabled: true,  min: '', max: 1300 }, show2: { enabled: false, min: '', max: '' } });
+Object.assign(_preloadedEGSchedule[11], { show1: { enabled: true,  min: '', max:  600 }, show2: { enabled: false, min: '', max: '' } });
+
 const dataBasic = {
   seed: 42,
-  population: {},
-  smpwTotal: 0,
-  fsDayLimits: {},   // { 2: {min:'', max:''}, 3: {...}, ... }
-  fsFineTune: false,
-  egSchedule: defaultEGSchedule(),
+  population: {
+    type: 'delegates',
+    count: 6000,
+    gsd: GSD_DEFAULTS,
+    los: [
+      { nights: 6, pct: 36 },
+      { nights: 7, pct: 45 },
+      { nights: 8, pct: 14 },
+      { nights: 9, pct:  5 },
+    ],
+    arrival: { D1: 0, D2: 3, D3: 48, D4: 36, D5: 13 },
+  },
+  smpwTotal: 200,
+  fsFineTune: true,
+  fsDayLimits: {
+    2:  { min: '', max: 150  },
+    3:  { min: '', max: 2000 },
+    4:  { min: '', max: 2800 },
+    5:  { min: '', max: 2650 },
+    6:  { min: '', max: 2600 },
+    10: { min: '', max: 1200 },
+    11: { min: '', max: 600  },
+  },
+  egSchedule: _preloadedEGSchedule,
   activities: [
     { name: 'Field Service',     slug: 'fs', days: FS_DAYS },
     { name: 'Evening Gathering', slug: 'eg', days: [] },
+  ],
+  optionalActivities: [
+    { name: 'Douglas',   slug: 'douglas',  dayLimits: { 3:{enabled:true,max:800}, 4:{enabled:true,max:800},  5:{enabled:true,max:800},  6:{enabled:true,max:1000} } },
+    { name: 'Four Mile', slug: 'fourmile', dayLimits: { 4:{enabled:true,max:300}, 5:{enabled:true,max:300},  6:{enabled:true,max:300}  } },
+    { name: 'Food Tour', slug: 'foodtour', dayLimits: { 3:{enabled:true,max:200}, 4:{enabled:true,max:200},  5:{enabled:true,max:200},  6:{enabled:true,max:200}, 10:{enabled:true,max:200}, 11:{enabled:true,max:200} } },
   ],
 };
 
@@ -3135,7 +3167,75 @@ function renderBasicActivities() {
         </table>
       </div>
     </div>
+
+    <!-- Optional Activities -->
+    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;background:var(--surface2)">
+      <div style="font-size:14px;font-weight:700;margin-bottom:4px">Optional Activities</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Delegates are scheduled into these after FS and EG, using remaining open delegate-slots. Enable days and set a daily cap for each activity.</div>
+      <div id="b-opt-activities-list">
+      ${(dataBasic.optionalActivities || []).map((opt, idx) => `
+        <div class="b-opt-activity-card" data-idx="${idx}" style="margin-bottom:20px;padding:14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:white">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+            <input type="text" class="b-opt-name" data-idx="${idx}" value="${opt.name}"
+              placeholder="Activity name"
+              style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;font-weight:600">
+            <button type="button" onclick="removeBasicOptActivity(${idx})"
+              style="background:none;border:1px solid #e0e0e0;border-radius:var(--radius-sm);padding:4px 10px;font-size:12px;color:var(--muted2);cursor:pointer">Remove</button>
+          </div>
+          <table class="result-table" style="font-size:12px;max-width:460px">
+            <thead><tr><th>Day</th><th>DOW</th><th style="text-align:center">Active?</th><th>Daily Cap</th></tr></thead>
+            <tbody>
+              ${Array.from({length:12},(_,i)=>i+1).filter(d => !BASIC_BLOCKED.has(d)).map(d => {
+                const lim = (opt.dayLimits || {})[d] || {};
+                const en  = lim.enabled || false;
+                const mx  = lim.max ?? '';
+                return `<tr>
+                  <td>Day ${d}</td><td>${DAY_DOW[d-1]}</td>
+                  <td style="text-align:center">
+                    <input type="checkbox" class="b-opt-day-cb" data-idx="${idx}" data-day="${d}"
+                      ${en?'checked':''} onchange="onOptDayToggle(${idx},${d},this.checked)"
+                      style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer">
+                  </td>
+                  <td>
+                    <input type="number" class="b-opt-cap" data-idx="${idx}" data-day="${d}"
+                      min="0" placeholder="—" value="${mx}" ${!en?'disabled':''}
+                      style="width:90px;padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;${!en?'opacity:.4':''}">
+                  </td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>`).join('')}
+      </div>
+      <button type="button" onclick="addBasicOptActivity()"
+        style="display:flex;align-items:center;gap:6px;background:none;border:1px dashed var(--accent);border-radius:var(--radius-sm);padding:8px 16px;font-size:13px;font-weight:600;color:var(--accent);cursor:pointer;width:100%;justify-content:center;margin-top:4px">
+        + Add Activity
+      </button>
+    </div>
   </div>`;
+}
+
+function onOptDayToggle(idx, day, enabled) {
+  document.querySelectorAll(`.b-opt-cap[data-idx="${idx}"][data-day="${day}"]`).forEach(el => {
+    el.disabled = !enabled;
+    el.style.opacity = enabled ? '' : '.4';
+  });
+}
+
+function addBasicOptActivity() {
+  saveBasicActivities();
+  dataBasic.optionalActivities.push({
+    name: 'New Activity',
+    slug: 'activity_' + Date.now(),
+    dayLimits: {},
+  });
+  renderBasicActivities();
+}
+
+function removeBasicOptActivity(idx) {
+  saveBasicActivities();
+  dataBasic.optionalActivities.splice(idx, 1);
+  renderBasicActivities();
 }
 
 function onEGShowToggle(day, show, enabled) {
@@ -3194,6 +3294,20 @@ function saveBasicActivities() {
       .filter(([, day]) => day.show1.enabled || day.show2.enabled)
       .map(([d]) => parseInt(d));
   }
+
+  // Optional activities — read name + per-day enabled + cap by index
+  (dataBasic.optionalActivities || []).forEach((opt, idx) => {
+    const nameEl = document.querySelector(`.b-opt-name[data-idx="${idx}"]`);
+    if (nameEl) opt.name = nameEl.value.trim() || opt.name;
+    const newLimits = {};
+    document.querySelectorAll(`.b-opt-day-cb[data-idx="${idx}"]`).forEach(cb => {
+      const d = parseInt(cb.dataset.day);
+      const capEl = document.querySelector(`.b-opt-cap[data-idx="${idx}"][data-day="${d}"]`);
+      const v = capEl?.value.trim();
+      newLimits[d] = { enabled: cb.checked, max: v !== '' && v != null ? parseInt(v) : '' };
+    });
+    opt.dayLimits = newLimits;
+  });
 }
 
 function validateBasicActivities() {
@@ -3966,9 +4080,35 @@ function runBasicSchedule() {
     onSite[d] = groups.reduce((s, g) => s + (g.checkin < d && g.checkout > d ? g.size : 0), 0);
   }
 
+  // --- Optional Activities: scheduled after FS1, FS2, EG ---
+  // Available delegate-slots on day d = on-site − FS1 − FS2 − EG already scheduled that day
+  const availForOpt = {};
+  for (let d = 1; d <= 12; d++) {
+    const fsD = (fs1Sched[d]||0) + (fs2Sched[d]||0);
+    const egD = (egShow1[d]||0) + (egShow2[d]||0);
+    availForOpt[d] = Math.max(0, (onSite[d]||0) - fsD - egD);
+  }
+
+  const optResults = [];
+  for (const opt of (dataBasic.optionalActivities || [])) {
+    const byDay = {};
+    let totalSched = 0;
+    const sortedDays = Object.keys(opt.dayLimits).map(Number).sort((a,b)=>a-b);
+    for (const d of sortedDays) {
+      const lim = opt.dayLimits[d] || {};
+      if (!lim.enabled || BASIC_BLOCKED.has(d)) continue;
+      const cap = lim.max !== '' && lim.max != null ? Number(lim.max) : Infinity;
+      const sched = Math.min(cap, availForOpt[d] || 0);
+      byDay[d] = Math.round(sched);
+      availForOpt[d] = Math.max(0, (availForOpt[d]||0) - sched);
+      totalSched += Math.round(sched);
+    }
+    optResults.push({ name: opt.name, slug: opt.slug, scheduled: totalSched, byDay, dayLimits: opt.dayLimits });
+  }
+
   showBasicScheduleResults({
     fs1Sched, fs2Sched, egShow1, egShow2,
-    smpwSched, onSite,
+    smpwSched, onSite, optResults,
     totalFS1Sched, totalFS2Sched, totalEGSched,
     totalFS1Miss,  totalFS2Miss,  totalEGMiss,
     fullySched, partiallySched, nonesSched,
@@ -4058,20 +4198,55 @@ function showBasicScheduleResults(r) {
   </tr>`;
 
   // EG per-day table
+  // Optional activities table rows — one table per activity
+  const optSections = (r.optResults || []).map(opt => {
+    const days = Object.keys(opt.dayLimits).map(Number).sort((a,b)=>a-b).filter(d => !BASIC_BLOCKED.has(d));
+    const rows = days.map(d => {
+      const sched = opt.byDay[d] || 0;
+      const lim   = opt.dayLimits[d] || {};
+      const cap   = lim.enabled ? (lim.max !== '' && lim.max != null ? Number(lim.max) : '—') : '—';
+      const enabled = lim.enabled;
+      if (!enabled) return `<tr style="color:var(--muted2)"><td>Day ${d}</td><td>${DAY_DOW[d-1]}</td><td colspan="2" style="font-style:italic">Disabled</td></tr>`;
+      return `<tr>
+        <td>Day ${d}</td><td>${DAY_DOW[d-1]}</td>
+        <td style="text-align:center"><strong>${sched.toLocaleString()}</strong></td>
+        <td style="text-align:center;color:var(--muted);font-size:11px">${typeof cap === 'number' ? cap.toLocaleString() : cap}</td>
+      </tr>`;
+    }).join('');
+    const total = Object.values(opt.byDay).reduce((s,v)=>s+v,0);
+    return `<h4 style="margin:20px 0 8px;font-size:13px">${opt.name}</h4>
+      <div style="overflow-x:auto;margin-bottom:8px">
+      <table class="result-table" style="font-size:12px;max-width:400px">
+        <thead><tr><th>Day</th><th>DOW</th><th style="text-align:center">Scheduled</th><th style="text-align:center;color:var(--muted);font-weight:400">Cap</th></tr></thead>
+        <tbody>${rows}
+          <tr style="font-weight:700;border-top:2px solid var(--border);background:var(--surface2)">
+            <td colspan="2">Total</td><td style="text-align:center">${total.toLocaleString()}</td><td></td>
+          </tr>
+        </tbody>
+      </table>
+      </div>`;
+  }).join('');
+
   // Daily activity summary
+  const optCols = (r.optResults || []).map(o => o.name);
   const dailySummaryRows = Array.from({length:12}, (_, i) => i + 1).map(d => {
     const blocked   = BASIC_BLOCKED.has(d);
     const onSiteD   = r.onSite[d] || 0;
     const fsD       = (r.fs1Sched[d] || 0) + (r.fs2Sched[d] || 0);
     const egD       = (r.egShow1[d] || 0) + (r.egShow2[d] || 0);
-    const idle      = Math.max(0, onSiteD - fsD - egD);
+    const optD      = (r.optResults || []).reduce((s, o) => s + (o.byDay[d] || 0), 0);
+    const idle      = Math.max(0, onSiteD - fsD - egD - optD);
     const idlePct   = onSiteD > 0 ? Math.round(100 * idle / onSiteD) : 0;
     const rowStyle  = blocked ? 'color:var(--muted2);background:#f8f9fa' : '';
+    const optCells  = (r.optResults || []).map(o =>
+      `<td style="text-align:center">${blocked ? '<span style="font-style:italic">—</span>' : (o.byDay[d]||0) > 0 ? (o.byDay[d]).toLocaleString() : '—'}</td>`
+    ).join('');
     if (blocked) return `<tr style="${rowStyle}">
       <td>Day ${d}</td><td>${DAY_DOW[d-1]}</td>
       <td style="text-align:center">${onSiteD.toLocaleString()}</td>
       <td style="text-align:center;font-style:italic">—</td>
       <td style="text-align:center;font-style:italic">—</td>
+      ${optCells}
       <td style="text-align:center;color:var(--muted2)">${onSiteD.toLocaleString()} <span style="font-size:10px">(100% — core day)</span></td>
     </tr>`;
     return `<tr style="${rowStyle}">
@@ -4079,6 +4254,7 @@ function showBasicScheduleResults(r) {
       <td style="text-align:center">${onSiteD.toLocaleString()}</td>
       <td style="text-align:center">${fsD > 0 ? fsD.toLocaleString() : '—'}</td>
       <td style="text-align:center">${egD > 0 ? egD.toLocaleString() : '—'}</td>
+      ${optCells}
       <td style="text-align:center;${idlePct > 30 ? 'color:#c0392b;font-weight:600' : idlePct > 10 ? 'color:#b7600a;font-weight:600' : 'color:#1a7a4a'}">
         ${idle.toLocaleString()} <span style="font-size:10px">(${idlePct}%)</span>
       </td>
@@ -4146,8 +4322,10 @@ function showBasicScheduleResults(r) {
       </table>
       </div>
 
+      ${optSections ? `<h4 style="margin-bottom:4px;font-size:13px">Optional Activities</h4>${optSections}` : ''}
+
       <h4 style="margin-bottom:8px;font-size:13px">Daily Activity Summary</h4>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">On-site delegates and how they are accounted for each day. Idle = on-site but not scheduled for FS or EG that day.</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">On-site delegates and how they are accounted for each day. Idle = on-site but not in any scheduled activity.</div>
       <div style="overflow-x:auto">
       <table class="result-table" style="font-size:12px;min-width:520px">
         <thead><tr>
@@ -4155,6 +4333,7 @@ function showBasicScheduleResults(r) {
           <th style="text-align:center">On-Site</th>
           <th style="text-align:center">Sched. FS</th>
           <th style="text-align:center">Sched. EG</th>
+          ${optCols.map(n=>`<th style="text-align:center">${n}</th>`).join('')}
           <th style="text-align:center">Idle / Unscheduled</th>
         </tr></thead>
         <tbody>${dailySummaryRows}</tbody>
