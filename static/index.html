@@ -3871,74 +3871,104 @@ function runBasicSchedule() {
     return slots;
   }
 
-  // --- Schedule each group ---
+  // --- Schedule each delegate individually (processed in group batches sharing the same feasible days) ---
+  // Each delegate gets FS1, then FS2 on a DIFFERENT day, then EG only if both FS are filled.
+  // Delegates are spread across all available days (not forced to share a day with their group).
+
+  function assignFS(count, grp, excludeDay) {
+    // Distribute `count` delegates across feasible FS days, filling least-loaded first.
+    // Returns a map of { day -> delegatesAssigned } and total assigned.
+    let remaining = count;
+    const assignments = {};
+    while (remaining > 0) {
+      const days = FS_DAYS.filter(d =>
+        grp.checkin < d && grp.checkout > d &&
+        !BASIC_BLOCKED.has(d) && fsRem[d] > 0 && d !== excludeDay
+      );
+      if (!days.length) break;
+      const d = days.reduce((best, d) => fsRem[d] > fsRem[best] ? d : best, days[0]);
+      const assign = Math.min(remaining, fsRem[d]);
+      assignments[d] = (assignments[d] || 0) + assign;
+      fsRem[d] -= assign;
+      remaining -= assign;
+    }
+    return { assignments, scheduled: count - remaining, missed: remaining };
+  }
+
   for (const grp of groups) {
-    let fs1Day = null, fs2Day = null, egSlot = null;
-    let fs1Got = 0, fs2Got = 0, egGot = 0;
+    // FS1 — spread across all feasible FS days
+    const { assignments: fs1Map, scheduled: fs1Got, missed: fs1Miss } = assignFS(grp.size, grp, null);
+    Object.entries(fs1Map).forEach(([d, n]) => {
+      const day = Number(d);
+      fs1Sched[day] += n;
+      const sw = Math.min(n, smpwRem[day]);
+      smpwSched[day] += sw; smpwRem[day] -= sw;
+    });
+    totalFS1Sched += fs1Got;
+    totalFS1Miss  += fs1Miss;
 
-    // FS1
-    const fs1Days = feasibleFS(grp, new Set());
-    if (fs1Days.length) {
-      fs1Day = pickFS(fs1Days);
-      const assign = Math.min(grp.size, fsRem[fs1Day]);
-      fs1Sched[fs1Day]  += assign;
-      fsRem[fs1Day]     -= assign;
-      // SMPW allocation
-      const smpwAssign = Math.min(assign, smpwRem[fs1Day]);
-      smpwSched[fs1Day] += smpwAssign;
-      smpwRem[fs1Day]   -= smpwAssign;
-      totalFS1Sched     += assign;
-      fs1Got = assign;
-      if (assign < grp.size) totalFS1Miss += grp.size - assign;
-    } else {
-      totalFS1Miss += grp.size;
+    // FS2 — each delegate must use a DIFFERENT day than their FS1 day.
+    // Process each FS1-day batch separately so we can exclude that day for FS2.
+    let fs2Got = 0, fs2Miss = 0;
+    for (const [fs1DayStr, count] of Object.entries(fs1Map)) {
+      const { assignments: fs2Map, scheduled, missed } = assignFS(count, grp, Number(fs1DayStr));
+      Object.entries(fs2Map).forEach(([d, n]) => {
+        const day = Number(d);
+        fs2Sched[day] += n;
+        const sw = Math.min(n, smpwRem[day]);
+        smpwSched[day] += sw; smpwRem[day] -= sw;
+      });
+      fs2Got  += scheduled;
+      fs2Miss += missed;
     }
+    totalFS2Sched += fs2Got;
+    totalFS2Miss  += fs2Miss;
 
-    // FS2 — different day from FS1
-    const fs2Days = feasibleFS(grp, new Set(fs1Day != null ? [fs1Day] : []));
-    if (fs2Days.length) {
-      fs2Day = pickFS(fs2Days);
-      const assign = Math.min(grp.size, fsRem[fs2Day]);
-      fs2Sched[fs2Day]  += assign;
-      fsRem[fs2Day]     -= assign;
-      const smpwAssign = Math.min(assign, smpwRem[fs2Day]);
-      smpwSched[fs2Day] += smpwAssign;
-      smpwRem[fs2Day]   -= smpwAssign;
-      totalFS2Sched     += assign;
-      fs2Got = assign;
-      if (assign < grp.size) totalFS2Miss += grp.size - assign;
-    } else {
-      totalFS2Miss += grp.size;
-    }
-
-    // EG — only if delegate was fully scheduled for both FS1 and FS2
-    const egSlots = (fs1Got >= grp.size && fs2Got >= grp.size) ? feasibleEG(grp) : [];
-    if (fs1Got < grp.size || fs2Got < grp.size) totalEGMiss += grp.size;
-    if (egSlots.length) {
-      // Pick show with most remaining capacity
-      egSlot = egSlots.reduce((best, s) => egRem[s.d][s.show] > egRem[best.d][best.show] ? s : best, egSlots[0]);
-      const assign = Math.min(grp.size, egRem[egSlot.d][egSlot.show]);
-      if (egSlot.show === 'show1') { egShow1[egSlot.d] += assign; }
-      else                         { egShow2[egSlot.d] += assign; }
-      egRem[egSlot.d][egSlot.show] -= assign;
-      totalEGSched += assign;
-      egGot = assign;
-      if (assign < grp.size) totalEGMiss += grp.size - assign;
+    // EG — only delegates who received both FS1 and FS2
+    const egEligible = Math.min(fs1Got, fs2Got);
+    let egGot = 0;
+    if (egEligible > 0) {
+      let remaining = egEligible;
+      while (remaining > 0) {
+        const slots = [];
+        for (let d = 1; d <= 12; d++) {
+          if (BASIC_BLOCKED.has(d) || grp.checkin >= d || grp.checkout <= d) continue;
+          if (egRem[d]?.show1 > 0) slots.push({ d, show: 'show1' });
+          if (egRem[d]?.show2 > 0) slots.push({ d, show: 'show2' });
+        }
+        if (!slots.length) break;
+        const best = slots.reduce((b, s) => egRem[s.d][s.show] > egRem[b.d][b.show] ? s : b, slots[0]);
+        const assign = Math.min(remaining, egRem[best.d][best.show]);
+        if (best.show === 'show1') egShow1[best.d] += assign;
+        else                       egShow2[best.d] += assign;
+        egRem[best.d][best.show] -= assign;
+        egGot    += assign;
+        remaining -= assign;
+      }
+      totalEGMiss += egEligible - egGot;
     } else {
       totalEGMiss += grp.size;
     }
+    totalEGSched += egGot;
 
-    // Fully / partially / none scheduled
-    const got3 = fs1Got >= grp.size && fs2Got >= grp.size && egGot >= grp.size;
-    const got0 = fs1Got === 0 && fs2Got === 0 && egGot === 0;
-    if (got3)       fullySched   += grp.size;
-    else if (got0)  nonesSched   += grp.size;
-    else            partiallySched += grp.size;
+    // Fully / partially / none scheduled (per delegate)
+    const fullyD   = Math.min(fs1Got, fs2Got, egGot);
+    const noneD    = grp.size - Math.max(fs1Got, fs2Got, egGot);
+    const partialD = grp.size - fullyD - Math.max(0, noneD);
+    fullySched     += fullyD;
+    nonesSched     += Math.max(0, noneD);
+    partiallySched += partialD;
+  }
+
+  // On-site delegates per day (present and eligible — not check-in or checkout day)
+  const onSite = {};
+  for (let d = 1; d <= 12; d++) {
+    onSite[d] = groups.reduce((s, g) => s + (g.checkin < d && g.checkout > d ? g.size : 0), 0);
   }
 
   showBasicScheduleResults({
     fs1Sched, fs2Sched, egShow1, egShow2,
-    smpwSched,
+    smpwSched, onSite,
     totalFS1Sched, totalFS2Sched, totalEGSched,
     totalFS1Miss,  totalFS2Miss,  totalEGMiss,
     fullySched, partiallySched, nonesSched,
@@ -4028,6 +4058,33 @@ function showBasicScheduleResults(r) {
   </tr>`;
 
   // EG per-day table
+  // Daily activity summary
+  const dailySummaryRows = Array.from({length:12}, (_, i) => i + 1).map(d => {
+    const blocked   = BASIC_BLOCKED.has(d);
+    const onSiteD   = r.onSite[d] || 0;
+    const fsD       = (r.fs1Sched[d] || 0) + (r.fs2Sched[d] || 0);
+    const egD       = (r.egShow1[d] || 0) + (r.egShow2[d] || 0);
+    const idle      = Math.max(0, onSiteD - fsD - egD);
+    const idlePct   = onSiteD > 0 ? Math.round(100 * idle / onSiteD) : 0;
+    const rowStyle  = blocked ? 'color:var(--muted2);background:#f8f9fa' : '';
+    if (blocked) return `<tr style="${rowStyle}">
+      <td>Day ${d}</td><td>${DAY_DOW[d-1]}</td>
+      <td style="text-align:center">${onSiteD.toLocaleString()}</td>
+      <td style="text-align:center;font-style:italic">—</td>
+      <td style="text-align:center;font-style:italic">—</td>
+      <td style="text-align:center;color:var(--muted2)">${onSiteD.toLocaleString()} <span style="font-size:10px">(100% — core day)</span></td>
+    </tr>`;
+    return `<tr style="${rowStyle}">
+      <td>Day ${d}</td><td>${DAY_DOW[d-1]}</td>
+      <td style="text-align:center">${onSiteD.toLocaleString()}</td>
+      <td style="text-align:center">${fsD > 0 ? fsD.toLocaleString() : '—'}</td>
+      <td style="text-align:center">${egD > 0 ? egD.toLocaleString() : '—'}</td>
+      <td style="text-align:center;${idlePct > 30 ? 'color:#c0392b;font-weight:600' : idlePct > 10 ? 'color:#b7600a;font-weight:600' : 'color:#1a7a4a'}">
+        ${idle.toLocaleString()} <span style="font-size:10px">(${idlePct}%)</span>
+      </td>
+    </tr>`;
+  }).join('');
+
   const egTableRows = Array.from({length:12},(_,i)=>i+1).map(d => {
     if (BASIC_BLOCKED.has(d)) return `<tr style="color:var(--muted2);background:#f8f9fa"><td>Day ${d}</td><td>${DAY_DOW[d-1]}</td><td colspan="5" style="text-align:center;font-style:italic">Blocked</td></tr>`;
     const s1 = r.egShow1[d] || 0;
@@ -4077,7 +4134,7 @@ function showBasicScheduleResults(r) {
       </div>
 
       <h4 style="margin-bottom:8px;font-size:13px">Evening Gathering by Day</h4>
-      <div style="overflow-x:auto">
+      <div style="overflow-x:auto;margin-bottom:20px">
       <table class="result-table" style="font-size:12px;min-width:480px">
         <thead><tr>
           <th>Day</th><th>DOW</th>
@@ -4086,6 +4143,21 @@ function showBasicScheduleResults(r) {
           <th>Total EG</th>
         </tr></thead>
         <tbody>${egTableRows}</tbody>
+      </table>
+      </div>
+
+      <h4 style="margin-bottom:8px;font-size:13px">Daily Activity Summary</h4>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">On-site delegates and how they are accounted for each day. Idle = on-site but not scheduled for FS or EG that day.</div>
+      <div style="overflow-x:auto">
+      <table class="result-table" style="font-size:12px;min-width:520px">
+        <thead><tr>
+          <th>Day</th><th>DOW</th>
+          <th style="text-align:center">On-Site</th>
+          <th style="text-align:center">Sched. FS</th>
+          <th style="text-align:center">Sched. EG</th>
+          <th style="text-align:center">Idle / Unscheduled</th>
+        </tr></thead>
+        <tbody>${dailySummaryRows}</tbody>
       </table>
       </div>
     </div>`;
