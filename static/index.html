@@ -4284,6 +4284,14 @@ function showBasicScheduleResults(r) {
       <td><strong>${(s1+s2).toLocaleString()}</strong></td>
     </tr>`;
   }).join('');
+  const egTotal1 = Object.values(r.egShow1).reduce((s,v)=>s+v,0);
+  const egTotal2 = Object.values(r.egShow2).reduce((s,v)=>s+v,0);
+  const egTotals = `<tr style="font-weight:700;border-top:2px solid var(--border);background:var(--surface2)">
+    <td colspan="2">Totals</td>
+    <td>${egTotal1.toLocaleString()}</td><td></td>
+    <td>${egTotal2 > 0 ? egTotal2.toLocaleString() : '—'}</td><td></td>
+    <td>${(egTotal1+egTotal2).toLocaleString()}</td>
+  </tr>`;
 
   sec.innerHTML = `
     <div class="result-section" style="border:2px solid #1a7a4a;border-radius:var(--radius)">
@@ -4325,7 +4333,7 @@ function showBasicScheduleResults(r) {
           <th>2nd Show</th><th style="color:var(--muted);font-weight:400">Cap</th>
           <th>Total EG</th>
         </tr></thead>
-        <tbody>${egTableRows}</tbody>
+        <tbody>${egTableRows}${egTotals}</tbody>
       </table>
       </div>
 
