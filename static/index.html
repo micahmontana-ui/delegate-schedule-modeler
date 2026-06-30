@@ -554,6 +554,13 @@ input[type=number] { -moz-appearance:textfield; }
 
 <script>
 // ============================================================
+// API base — empty string when running locally, deployed URL on GitHub Pages
+// ============================================================
+const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+  ? ''
+  : 'https://delegate-schedule-modeler.onrender.com';
+
+// ============================================================
 // State
 // ============================================================
 let currentStage = 0;
@@ -1888,7 +1895,7 @@ async function runPipeline() {
   showSpinner('Running pipeline…');
 
   try {
-    const resp = await fetch('/run', {
+    const resp = await fetch(`${API_BASE}/run`, {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ config }),
@@ -2282,7 +2289,7 @@ function renderChatArea() {
 
 async function checkChatAvailability() {
   try {
-    const r = await fetch('/api-status');
+    const r = await fetch(`${API_BASE}/api-status`);
     const d = await r.json();
     if (!d.available) {
       document.getElementById('chat-input').disabled = true;
@@ -2321,7 +2328,7 @@ async function sendChat() {
   msgs.scrollTop = 99999;
 
   try {
-    const resp = await fetch('/chat', {
+    const resp = await fetch(`${API_BASE}/chat`, {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({
@@ -3833,7 +3840,7 @@ function renderBasicChatArea() {
 
 async function checkBasicChatAvailability() {
   try {
-    const r = await fetch('/api-status');
+    const r = await fetch(`${API_BASE}/api-status`);
     const d = await r.json();
     if (!d.available) {
       document.getElementById('b-chat-input').disabled = true;
@@ -3872,7 +3879,7 @@ async function sendBasicChat() {
   msgs.scrollTop = 99999;
 
   try {
-    const resp = await fetch('/chat', {
+    const resp = await fetch(`${API_BASE}/chat`, {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({

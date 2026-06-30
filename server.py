@@ -18,10 +18,22 @@ from pathlib import Path
 from typing import Any, AsyncGenerator
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "https://micahmontana-ui.github.io",
+    ],
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
 
 BASE = Path(__file__).parent
 OUTPUT_DIR = BASE / "output"
