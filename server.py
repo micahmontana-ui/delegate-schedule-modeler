@@ -30,6 +30,7 @@ app.add_middleware(
         "http://localhost:8000",
         "http://127.0.0.1:8000",
         "https://micahmontana-ui.github.io",
+        "https://web-production-b9a7e.up.railway.app",
     ],
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
