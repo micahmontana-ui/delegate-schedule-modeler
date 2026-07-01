@@ -1262,12 +1262,43 @@ function renderActivities() {
   document.getElementById('stage-container').innerHTML = `
   <div class="stage-card">
     <div class="stage-title">Stage 4 — Activities</div>
-    <div class="stage-desc">Set available dates and capacity for each activity. Field Service 1 &amp; 2 and Evening Gathering are pre-loaded. Add more as needed.</div>
+    <div class="stage-desc">Set available dates and per-day limits for each activity. Field Service 1 &amp; 2 and Evening Gathering are pre-loaded. Add more as needed.</div>
 
     <div class="field">
       <label>Required activities</label>
       <div id="req-act-list"></div>
       <button class="add-activity-btn" onclick="addReqActivity()">+ Add required activity</button>
+    </div>
+
+    <!-- Field Service shared daily limits -->
+    <div class="field" style="margin-top:20px;padding-top:20px;border-top:2px solid var(--border)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <label style="margin:0;color:#1B5E20">Field Service — shared daily limits <span style="font-size:12px;font-weight:400;color:var(--muted);margin-left:6px">FS1 + FS2 draw from this combined pool per day · leave blank for no limit</span></label>
+        <button onclick="syncFSCapDates()" style="padding:6px 14px;background:#2E7D32;color:white;border:none;border-radius:var(--radius-sm);font-size:12px;font-weight:600;cursor:pointer;transition:opacity .15s;white-space:nowrap;flex-shrink:0;margin-left:12px" onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">↺ Sync dates from FS1 / FS2</button>
+      </div>
+      <table class="result-table" style="max-width:500px">
+        <thead><tr><th>Date</th><th>Min delegates</th><th>Max delegates</th><th></th></tr></thead>
+        <tbody id="fs-cap-body"></tbody>
+      </table>
+    </div>
+
+    <!-- SMPW -->
+    <div class="field" style="margin-top:20px;padding-top:20px;border-top:2px solid var(--border)">
+      <label style="color:#0B6E8A">SMPW — Service &amp; Ministry Partnership Work <span style="font-size:12px;font-weight:400;color:var(--muted);margin-left:6px">groups do FS without a bus · fulfills their FS1 or FS2</span></label>
+      <div style="margin-bottom:12px">
+        <label style="font-size:12px;font-weight:500;color:var(--muted2)">Eligible hotels <span style="font-weight:400">(only groups from these hotels can be assigned SMPW)</span></label>
+        <div id="smpw-hotel-list" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px"></div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <label style="margin:0;font-size:12px;font-weight:500;color:var(--muted2)">Dates &amp; per-day limits</label>
+        <button onclick="syncSMPWDates()" style="padding:6px 14px;background:#0F91BB;color:white;border:none;border-radius:var(--radius-sm);font-size:12px;font-weight:600;cursor:pointer;transition:opacity .15s;white-space:nowrap;flex-shrink:0" onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">↺ Sync from FS1 / FS2 dates</button>
+      </div>
+      <table class="result-table" style="max-width:500px">
+        <thead><tr><th>Date</th><th>Min delegates</th><th>Max delegates</th><th></th></tr></thead>
+        <tbody id="smpw-date-body"></tbody>
+      </table>
+      <button class="add-row-btn" onclick="addSMPWDateRow()" style="margin-top:8px">+ Add date manually</button>
+      <div class="hint">Groups are chosen to minimise under-minimum bus trips.</div>
     </div>
 
     <div class="field" style="margin-top:24px">
@@ -1278,61 +1309,31 @@ function renderActivities() {
   </div>
 
   <div class="stage-card">
-    <div class="stage-title" style="font-size:17px">Activity Preference Distribution</div>
-    <div class="stage-desc">Not all groups want to do every optional activity. Set what share of groups will list preferences for how many optional activities. The scheduler will build each group's personal ranked preference list using each activity's popularity, then assign accordingly.</div>
-    <div class="field">
-      <table class="dist-table" style="max-width:480px">
-        <thead><tr><th style="width:60%">Groups who want…</th><th>% of all groups</th></tr></thead>
-        <tbody>
-          <tr><td style="font-size:13px;padding:6px 8px 6px 0">3 or more optional activities</td>
-              <td>${numCtrl(pd.threePlus, {cls:'pd-input', id:'pd-three-plus', min:0, max:100, step:1})}</td></tr>
-          <tr><td style="font-size:13px;padding:6px 8px 6px 0">2 – 3 optional activities</td>
-              <td>${numCtrl(pd.twoThree, {cls:'pd-input', id:'pd-two-three', min:0, max:100, step:1})}</td></tr>
-          <tr><td style="font-size:13px;padding:6px 8px 6px 0">1 – 2 optional activities</td>
-              <td>${numCtrl(pd.oneTwo, {cls:'pd-input', id:'pd-one-two', min:0, max:100, step:1})}</td></tr>
-          <tr><td style="font-size:13px;padding:6px 8px 6px 0">Exactly 1 optional activity</td>
-              <td>${numCtrl(pd.one, {cls:'pd-input', id:'pd-one', min:0, max:100, step:1})}</td></tr>
-        </tbody>
-      </table>
-      <div class="dist-total" id="pd-total" style="margin-top:8px"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <div class="stage-title" style="font-size:17px;margin:0">Activity Preference Distribution</div>
+      <button type="button" id="pd-toggle-btn" onclick="togglePrefDist()"
+        style="padding:5px 14px;background:var(--surface3);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;font-weight:600;color:var(--muted2);cursor:pointer;transition:all .15s">
+        ${data.prefDistVisible === false ? '▸ Show' : '▾ Hide'}
+      </button>
     </div>
-  </div>
-
-  <div class="stage-card" style="border-color:#2E7D32;background:linear-gradient(135deg,#e8f5e9,#c8e6c9)">
-    <div class="stage-title" style="font-size:17px;color:#1B5E20">Field Service Daily Capacity</div>
-    <div class="stage-desc" style="color:#2E7D32">Total delegates allowed in Field Service (FS1 + FS2 combined) on each day. The scheduler draws from this shared pool across both activities. Leave blank for unlimited.</div>
-    <div class="field">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <label style="margin:0">Daily delegate cap</label>
-        <button class="btn-sm" onclick="syncFSCapDates()" style="font-size:11px">Sync dates from FS1/FS2</button>
+    <div class="stage-desc" style="margin-bottom:10px">Not all groups want to do every optional activity. Set what share of groups will list preferences for how many optional activities. The scheduler will build each group's personal ranked preference list using each activity's popularity, then assign accordingly.</div>
+    <div id="pd-body" style="display:${data.prefDistVisible === false ? 'none' : 'block'}">
+      <div class="field">
+        <table class="dist-table" style="max-width:480px">
+          <thead><tr><th style="width:60%">Groups who want…</th><th>% of all groups</th></tr></thead>
+          <tbody>
+            <tr><td style="font-size:13px;padding:6px 8px 6px 0">3 or more optional activities</td>
+                <td>${numCtrl(pd.threePlus, {cls:'pd-input', id:'pd-three-plus', min:0, max:100, step:1})}</td></tr>
+            <tr><td style="font-size:13px;padding:6px 8px 6px 0">2 – 3 optional activities</td>
+                <td>${numCtrl(pd.twoThree, {cls:'pd-input', id:'pd-two-three', min:0, max:100, step:1})}</td></tr>
+            <tr><td style="font-size:13px;padding:6px 8px 6px 0">1 – 2 optional activities</td>
+                <td>${numCtrl(pd.oneTwo, {cls:'pd-input', id:'pd-one-two', min:0, max:100, step:1})}</td></tr>
+            <tr><td style="font-size:13px;padding:6px 8px 6px 0">Exactly 1 optional activity</td>
+                <td>${numCtrl(pd.one, {cls:'pd-input', id:'pd-one', min:0, max:100, step:1})}</td></tr>
+          </tbody>
+        </table>
+        <div class="dist-total" id="pd-total" style="margin-top:8px"></div>
       </div>
-      <table class="result-table" style="max-width:380px">
-        <thead><tr><th>Date</th><th>Delegate cap</th><th></th></tr></thead>
-        <tbody id="fs-cap-body"></tbody>
-      </table>
-    </div>
-  </div>
-
-  <div class="stage-card" style="border-color:#0F91BB;background:linear-gradient(135deg,#e4f4fa,#cceaf5)">
-    <div class="stage-title" style="font-size:17px">SMPW <span style="font-size:13px;font-weight:400;color:var(--muted);margin-left:8px">Service &amp; Ministry Partnership Work</span></div>
-    <div class="stage-desc">SMPW is a sub-activity under Field Service. Groups assigned to SMPW fulfill either their FS1 or FS2 requirement and do not ride a bus. Use it to improve bus efficiency by diverting groups that would create under-minimum trips.</div>
-
-    <div class="field">
-      <label>Eligible hotels <span style="color:var(--muted);font-weight:400">(only groups from these hotels can be assigned SMPW)</span></label>
-      <div id="smpw-hotel-list" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px"></div>
-    </div>
-
-    <div class="field">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <label style="margin:0">SMPW dates &amp; delegate caps</label>
-        <button class="add-row-btn" style="margin:0;padding:5px 12px;border:1px solid var(--accent);border-radius:var(--radius-sm);color:var(--accent);background:white;font-size:12px;cursor:pointer" onclick="syncSMPWDates()">Sync from FS1 / FS2 dates</button>
-      </div>
-      <table class="dist-table">
-        <thead><tr><th>Date</th><th>Max delegates that day</th><th></th></tr></thead>
-        <tbody id="smpw-date-body"></tbody>
-      </table>
-      <button class="add-row-btn" onclick="addSMPWDateRow()">+ Add date manually</button>
-      <div class="hint">Dates are auto-filled from your FS1 &amp; FS2 selections above. Set each day's delegate cap. Groups are chosen to minimise under-minimum bus trips.</div>
     </div>
   </div>`;
 
@@ -1341,10 +1342,12 @@ function renderActivities() {
   reqs.forEach(a => addReqActivity(a));
   data.optionalActivities.forEach(a => addOptActivity(a));
 
-  // Field Service daily cap — autofill from FS dates if none saved
+  // Field Service daily cap + min — autofill from FS dates if none saved
   const savedFSCap = data.field_service_cap || {};
-  if (Object.keys(savedFSCap).length) {
-    Object.entries(savedFSCap).sort().forEach(([d, c]) => addFSCapRow(d, c));
+  const savedFSMin = data.field_service_min || {};
+  if (Object.keys(savedFSCap).length || Object.keys(savedFSMin).length) {
+    const allFSDates = new Set([...Object.keys(savedFSCap), ...Object.keys(savedFSMin)]);
+    [...allFSDates].sort().forEach(d => addFSCapRow(d, savedFSCap[d] ?? '', savedFSMin[d] ?? ''));
   } else {
     syncFSCapDates();
   }
@@ -1354,7 +1357,7 @@ function renderActivities() {
 
   // SMPW dates — autofill from FS if none saved yet
   if (data.smpw?.dates?.length) {
-    data.smpw.dates.forEach(d => addSMPWDateRow(d.date, d.cap));
+    data.smpw.dates.forEach(d => addSMPWDateRow(d.date, d.cap, d.min));
   } else {
     syncSMPWDates();
   }
@@ -1392,13 +1395,14 @@ function syncFSCapDates() {
   [...fsDates].sort().forEach(d => addFSCapRow(d, existing[d] ?? ''));
 }
 
-function addFSCapRow(dateVal='', cap='') {
+function addFSCapRow(dateVal='', cap='', minCap='') {
   const tbody = document.getElementById('fs-cap-body');
   if (!tbody) return;
   const tr = document.createElement('tr');
   tr.innerHTML = `
     <td><input type="date" class="fs-cap-date" value="${esc(dateVal)}" style="width:150px"></td>
-    <td>${numCtrl(cap, {cls:'fs-cap-del', min:1, ph:'e.g. 500', wide:true})}</td>
+    <td>${numCtrl(minCap, {cls:'fs-cap-min', min:0, ph:'—', wide:true})}</td>
+    <td>${numCtrl(cap, {cls:'fs-cap-del', min:1, ph:'∞', wide:true})}</td>
     <td><button class="remove-act" style="position:static;margin:0" onclick="this.closest('tr').remove()">×</button></td>`;
   tbody.appendChild(tr);
 }
@@ -1445,6 +1449,16 @@ function syncSMPWDates() {
   sorted.forEach(d => addSMPWDateRow(d, existingCaps[d] ?? ''));
 }
 
+function togglePrefDist() {
+  const body = document.getElementById('pd-body');
+  const btn  = document.getElementById('pd-toggle-btn');
+  if (!body || !btn) return;
+  const nowHidden = body.style.display === 'none';
+  body.style.display = nowHidden ? 'block' : 'none';
+  btn.textContent = nowHidden ? '▾ Hide' : '▸ Show';
+  data.prefDistVisible = nowHidden;
+}
+
 function updatePrefDepthTotal() {
   const inputs = [...document.querySelectorAll('.pd-input')];
   const total = inputs.reduce((s, i) => s + (parseInt(i.value) || 0), 0);
@@ -1470,6 +1484,7 @@ function addReqActivity(a={}) {
   }
 
   const isFS = a.name === 'Field Service 1' || a.name === 'Field Service 2';
+  const limitsId = `act-limits-${id}`;
   const div = document.createElement('div');
   div.className = 'activity-card' + (isMutex ? ' mutex-card' : '');
   div.dataset.actName = a.name || '';
@@ -1484,21 +1499,27 @@ function addReqActivity(a={}) {
         <input type="text" class="act-name" value="${esc(a.name||'')}" placeholder="Activity name" ${isLocked?'readonly style="opacity:.6"':''}>
       </div>
       ${isFS
-        ? `<div class="field" style="margin:0"><label>Daily capacity</label><div style="font-size:12px;color:#2E7D32;font-weight:600;padding:6px 0">Shared pool ↓ see Field Service Daily Capacity below</div></div>`
-        : `<div class="field" style="margin:0"><label>Daily capacity</label>${numCtrl(a.capacity||'', {cls:'act-cap', min:1, ph:'∞'})}</div>`
+        ? `<div class="field" style="margin:0"><label>Daily capacity</label><div style="font-size:12px;color:#2E7D32;font-weight:600;padding:6px 0">Shared pool — configure per-day limits in the FS section below</div></div>`
+        : ''
       }
     </div>
     <div class="field" style="margin:0">
       <label>Available dates <span style="color:var(--muted);font-weight:400">(click to select — greyed dates are convention days)</span></label>
       <div id="dates-${id}" class="${isFS?'fs-dates':''}"></div>
-    </div>`;
+    </div>
+    ${!isFS ? `<div class="field" style="margin-top:12px;margin-bottom:0">
+      <label>Per-day delegate limits <span style="color:var(--muted);font-weight:400">(min/max per selected date — leave blank for no limit)</span></label>
+      <div id="${limitsId}"><div style="font-size:12px;color:var(--muted);margin-top:6px">Select dates above to set per-day limits.</div></div>
+    </div>` : ''}`;
 
   list.appendChild(div);
-  renderDateGrid(`dates-${id}`, a.dates || []);
+  renderDateGrid(`dates-${id}`, a.dates || [], isFS ? null : limitsId);
+  if (!isFS) updateDayLimitsTable(limitsId, `dates-${id}`, a.dayLimits || {});
 }
 
 function addOptActivity(a={}) {
   const id = actCardId++;
+  const limitsId = `opt-limits-${id}`;
   const list = document.getElementById('opt-act-list');
   const div = document.createElement('div');
   div.className = 'activity-card';
@@ -1519,16 +1540,6 @@ function addOptActivity(a={}) {
     </div>
     <div class="row" style="margin-bottom:12px">
       <div class="field" style="margin:0">
-        <label>Daily capacity <span style="color:var(--muted);font-weight:400">(delegates)</span></label>
-        ${numCtrl(a.capacity||'', {cls:'opt-cap', min:1, ph:'∞'})}
-      </div>
-      <div class="field" style="margin:0">
-        <label>Minimum delegates <span style="color:var(--muted);font-weight:400">(cancel if below)</span></label>
-        ${numCtrl(a.minCapacity||'', {cls:'opt-min-cap', min:1, ph:'no minimum'})}
-      </div>
-    </div>
-    <div class="row" style="margin-bottom:12px">
-      <div class="field" style="margin:0">
         <label>Requires Evening Gathering first?</label>
         <select class="opt-prereq-eg">
           <option value="yes" ${a.prerequisite_group==='Evening Gathering'?'selected':''}>Yes — group must have EG AM or EG PM first</option>
@@ -1539,14 +1550,62 @@ function addOptActivity(a={}) {
     <div class="field" style="margin:0">
       <label>Available dates <span style="color:var(--muted);font-weight:400">(click to select — greyed dates are convention days)</span></label>
       <div id="opt-dates-${id}"></div>
+    </div>
+    <div class="field" style="margin-top:12px;margin-bottom:0">
+      <label>Per-day delegate limits <span style="color:var(--muted);font-weight:400">(min/max per selected date — leave blank for no limit)</span></label>
+      <div id="${limitsId}"><div style="font-size:12px;color:var(--muted);margin-top:6px">Select dates above to set per-day limits.</div></div>
     </div>`;
   list.appendChild(div);
-  renderDateGrid(`opt-dates-${id}`, a.dates || []);
+  renderDateGrid(`opt-dates-${id}`, a.dates || [], limitsId);
+  updateDayLimitsTable(limitsId, `opt-dates-${id}`, a.dayLimits || {});
 }
 
 const DAY_ABBR = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
-function renderDateGrid(containerId, selectedDates = []) {
+function updateDayLimitsTable(limitsId, gridId, initialLimits = {}) {
+  const limitsEl = document.getElementById(limitsId);
+  const gridEl   = document.getElementById(gridId);
+  if (!limitsEl || !gridEl) return;
+
+  // Preserve values currently in the DOM (user may have already typed something)
+  const domVals = {};
+  limitsEl.querySelectorAll('tr[data-date]').forEach(tr => {
+    const d = tr.dataset.date;
+    domVals[d] = {
+      min: tr.querySelector('.dlim-min')?.value ?? '',
+      max: tr.querySelector('.dlim-max')?.value ?? '',
+    };
+  });
+
+  const selectedDates = [...gridEl.querySelectorAll('.date-chip.selected')].map(b => b.dataset.date);
+  if (!selectedDates.length) {
+    limitsEl.innerHTML = '<div style="font-size:12px;color:var(--muted);margin-top:6px">Select dates above to set per-day limits.</div>';
+    return;
+  }
+
+  const rows = selectedDates.map(dateStr => {
+    const d   = new Date(dateStr + 'T00:00:00');
+    const lbl = DAY_ABBR[d.getDay()] + ' ' + d.getDate();
+    const saved  = initialLimits[dateStr] || {};
+    const vals   = (domVals[dateStr] && (domVals[dateStr].min !== '' || domVals[dateStr].max !== ''))
+                   ? domVals[dateStr]
+                   : { min: saved.min ?? '', max: saved.max ?? '' };
+    return `<tr data-date="${dateStr}">
+      <td style="font-size:12px;white-space:nowrap">${lbl} <span style="color:var(--muted);font-size:11px">${dateStr}</span></td>
+      <td><input type="number" class="dlim-min" min="0" placeholder="—" value="${vals.min}"
+        style="width:80px;padding:4px 6px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px"></td>
+      <td><input type="number" class="dlim-max" min="0" placeholder="∞" value="${vals.max}"
+        style="width:80px;padding:4px 6px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px"></td>
+    </tr>`;
+  }).join('');
+
+  limitsEl.innerHTML = `<table class="result-table" style="font-size:12px;max-width:440px;margin-top:8px">
+    <thead><tr><th>Date</th><th>Min delegates</th><th>Max delegates</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+function renderDateGrid(containerId, selectedDates = [], limitsId = null) {
   const el = document.getElementById(containerId);
   if (!el) return;
   const windowStart = data.population && data.population.windowStart;
@@ -1594,7 +1653,10 @@ function renderDateGrid(containerId, selectedDates = []) {
     } else {
       btn.className = 'date-chip' + (selectedSet.has(dateStr) ? ' selected' : '');
       btn.title = dateStr;
-      btn.onclick = () => btn.classList.toggle('selected');
+      btn.onclick = () => {
+        btn.classList.toggle('selected');
+        if (limitsId) updateDayLimitsTable(limitsId, containerId);
+      };
     }
     grid.appendChild(btn);
   }
@@ -1632,28 +1694,52 @@ function renderSMPWHotels() {
     </label>`).join('');
 }
 
-function addSMPWDateRow(dateVal='', cap='') {
+function addSMPWDateRow(dateVal='', cap='', minCap='') {
   const tbody = document.getElementById('smpw-date-body');
   if (!tbody) return;
   const tr = document.createElement('tr');
   tr.innerHTML = `
     <td><input type="date" class="smpw-date-input" value="${esc(dateVal)}" style="width:160px"></td>
-    <td>${numCtrl(cap||'', {cls:'smpw-cap', min:1, ph:'e.g. 80', wide:true})}</td>
+    <td>${numCtrl(minCap||'', {cls:'smpw-min', min:0, ph:'—', wide:true})}</td>
+    <td>${numCtrl(cap||'', {cls:'smpw-cap', min:1, ph:'∞', wide:true})}</td>
     <td><button class="remove-btn" onclick="this.closest('tr').remove()">×</button></td>`;
   tbody.appendChild(tr);
 }
 
 function saveActivities() {
+  function collectDayLimits(card, limitsSelector) {
+    const limitsEl = card.querySelector(limitsSelector);
+    if (!limitsEl) return {};
+    const limits = {};
+    limitsEl.querySelectorAll('tr[data-date]').forEach(tr => {
+      const d   = tr.dataset.date;
+      const min = tr.querySelector('.dlim-min')?.value.trim();
+      const max = tr.querySelector('.dlim-max')?.value.trim();
+      if (min !== '' || max !== '') {
+        limits[d] = {
+          min: min !== '' ? parseInt(min) : null,
+          max: max !== '' ? parseInt(max) : null,
+        };
+      }
+    });
+    return limits;
+  }
+
   data.requiredActivities = [...document.querySelectorAll('#req-act-list .activity-card')].map(card => {
     const gridId = card.querySelector('[id^="dates-"]')?.id;
     const dates = gridId ? collectDatesFromGrid(gridId) : [];
-    const capVal = card.querySelector('.act-cap')?.value?.trim() || '';
+    const isFS = ['Field Service 1','Field Service 2'].includes(card.dataset.actName);
+    const dayLimits = isFS ? {} : collectDayLimits(card, '[id^="act-limits-"]');
+    const capacityDict = Object.keys(dayLimits).length
+      ? Object.fromEntries(Object.entries(dayLimits).filter(([,v])=>v.max!=null).map(([d,v])=>[d,v.max]))
+      : null;
     const defMatch = REQ_DEFAULTS.find(d => d.name === (card.dataset.actName||card.querySelector('.act-name').value.trim()));
     return {
       name: card.querySelector('.act-name').value.trim(),
       priority: parseInt(card.dataset.priority) || 1,
       dates,
-      capacity: capVal ? parseInt(capVal) : null,
+      capacity: capacityDict,
+      dayLimits,
       mutex: card.dataset.mutex || null,
       prerequisites: defMatch ? defMatch.prerequisites : JSON.parse(card.dataset.prerequisites||'[]'),
     };
@@ -1662,35 +1748,45 @@ function saveActivities() {
   data.optionalActivities = [...document.querySelectorAll('#opt-act-list .activity-card')].map(card => {
     const gridId = card.querySelector('[id^="opt-dates-"]')?.id;
     const dates = gridId ? collectDatesFromGrid(gridId) : [];
-    const capVal = card.querySelector('.opt-cap').value.trim();
-    const minCapVal = card.querySelector('.opt-min-cap').value.trim();
+    const dayLimits = collectDayLimits(card, '[id^="opt-limits-"]');
+    const capacityDict = Object.keys(dayLimits).length
+      ? Object.fromEntries(Object.entries(dayLimits).filter(([,v])=>v.max!=null).map(([d,v])=>[d,v.max]))
+      : null;
     const egReq = card.querySelector('.opt-prereq-eg').value;
     return {
       name: card.querySelector('.opt-name').value.trim(),
       wantPct: (parseFloat(card.querySelector('.opt-want').value)||0)/100,
       dates,
-      capacity: capVal ? parseInt(capVal) : null,
-      minCapacity: minCapVal ? parseInt(minCapVal) : null,
+      capacity: capacityDict,
+      minCapacity: null,
+      dayLimits,
       prerequisite: null,
       prerequisite_group: egReq === 'yes' ? 'Evening Gathering' : null,
     };
   }).filter(a => a.name);
 
-  // Field Service shared daily cap
+  // Field Service shared daily cap + min
   const fsCap = {};
+  const fsMin = {};
   document.querySelectorAll('#fs-cap-body tr').forEach(tr => {
     const d = tr.querySelector('.fs-cap-date')?.value;
     const c = tr.querySelector('.fs-cap-del')?.value;
-    if (d && c) fsCap[d] = parseInt(c);
+    const m = tr.querySelector('.fs-cap-min')?.value;
+    if (d) {
+      if (c) fsCap[d] = parseInt(c);
+      if (m) fsMin[d] = parseInt(m);
+    }
   });
   data.field_service_cap = fsCap;
+  data.field_service_min = fsMin;
 
   // SMPW
   const smpwHotels = [...document.querySelectorAll('.smpw-hotel-chk:checked')].map(c => c.value);
   const smpwDates = [...document.querySelectorAll('#smpw-date-body tr')].map(tr => {
     const d = tr.querySelector('.smpw-date-input')?.value;
     const c = tr.querySelector('.smpw-cap')?.value;
-    return d && c ? { date: d, cap: parseInt(c) } : null;
+    const m = tr.querySelector('.smpw-min')?.value;
+    return d ? { date: d, cap: c ? parseInt(c) : null, min: m ? parseInt(m) : null } : null;
   }).filter(Boolean);
   data.smpw = { hotels: smpwHotels, dates: smpwDates };
 
@@ -1702,6 +1798,10 @@ function saveActivities() {
     oneTwo:    pdGet('pd-one-two'),
     one:       pdGet('pd-one'),
   };
+
+  // Preference distribution panel visibility
+  const pdBody = document.getElementById('pd-body');
+  if (pdBody) data.prefDistVisible = pdBody.style.display !== 'none';
 }
 
 function validateActivities() {
@@ -1814,7 +1914,12 @@ function validateTransport() {
 function renderReview() {
   const p = data.population;
   const gsdRows = (p.gsd||[]).map(r=>`<tr><td>Size ${r.size}</td><td>${r.pct}%</td></tr>`).join('');
-  const reqRows = data.requiredActivities.map(a=>`<tr><td>${esc(a.name)}</td><td>Priority ${a.priority}</td><td>${a.dates.length} dates</td><td>${a.capacity===null?'Unlimited':a.capacity}</td></tr>`).join('');
+  const reqRows = data.requiredActivities.map(a => {
+    const isFS = a.name === 'Field Service 1' || a.name === 'Field Service 2';
+    const limitsCount = Object.keys(a.dayLimits||{}).length;
+    const capDisplay = isFS ? 'Shared pool' : limitsCount ? `Per-day limits (${limitsCount} days)` : 'Unlimited';
+    return `<tr><td>${esc(a.name)}</td><td>Priority ${a.priority}</td><td>${a.dates.length} dates</td><td>${capDisplay}</td></tr>`;
+  }).join('');
   const hotelRows = data.hotels.map(h=>`<tr><td>${esc(h.name)}</td><td>${h.capacity}</td><td>${esc(data.hotelToStop[h.name]||'—')}</td></tr>`).join('');
 
   document.getElementById('stage-container').innerHTML = `
@@ -2073,6 +2178,54 @@ function showResults(result) {
         actBody.appendChild(subTr);
       }
     }
+  }
+
+  // Per-day min violations — check dayLimits against actual daily_activity
+  const dailyActData = s.daily_activity || {};
+  const allActivities = [...(data.requiredActivities||[]), ...(data.optionalActivities||[])];
+  const violations = [];
+  for (const act of allActivities) {
+    const lims = act.dayLimits || {};
+    for (const [dateStr, lim] of Object.entries(lims)) {
+      if (lim.min == null) continue;
+      const actual = (dailyActData[dateStr] || {})[act.name]?.delegates || 0;
+      if (actual < lim.min) {
+        violations.push({ name: act.name, date: dateStr, actual, min: lim.min });
+      }
+    }
+  }
+
+  let minViolSection = document.getElementById('min-viol-section');
+  if (!minViolSection) {
+    minViolSection = document.createElement('div');
+    minViolSection.id = 'min-viol-section';
+    minViolSection.className = 'result-section';
+    document.getElementById('daily-activity-section').insertAdjacentElement('beforebegin', minViolSection);
+  }
+
+  if (violations.length) {
+    const DAYS_V = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const fmtDate = iso => { const d = new Date(iso+'T12:00:00'); return `${DAYS_V[d.getDay()]} ${d.getMonth()+1}/${d.getDate()}`; };
+    const rows = violations.map(v =>
+      `<tr style="background:#fdf0ef">
+        <td><strong>${esc(v.name)}</strong></td>
+        <td>${fmtDate(v.date)}</td>
+        <td style="color:var(--error);font-weight:600">${v.actual.toLocaleString()}</td>
+        <td>${v.min.toLocaleString()}</td>
+        <td style="color:var(--error);font-size:12px">−${(v.min - v.actual).toLocaleString()} below min</td>
+      </tr>`
+    ).join('');
+    minViolSection.innerHTML = `
+      <h3 style="color:var(--error)">⚠ Per-Day Minimum Violations (${violations.length})</h3>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:10px">These days were scheduled below the minimum you set. Consider increasing the population, loosening other activity caps, or adjusting your minimums.</p>
+      <table class="result-table" style="max-width:640px">
+        <thead><tr><th>Activity</th><th>Date</th><th>Scheduled</th><th>Min</th><th>Gap</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+    minViolSection.style.display = 'block';
+  } else {
+    minViolSection.style.display = 'none';
+    minViolSection.innerHTML = '';
   }
 
   // Daily activity breakdown table — activities as rows, days as columns
@@ -3189,13 +3342,15 @@ function renderBasicActivities() {
             <button type="button" onclick="removeBasicOptActivity(${idx})"
               style="background:none;border:1px solid #e0e0e0;border-radius:var(--radius-sm);padding:4px 10px;font-size:12px;color:var(--muted2);cursor:pointer">Remove</button>
           </div>
-          <table class="result-table" style="font-size:12px;max-width:460px">
-            <thead><tr><th>Day</th><th>DOW</th><th style="text-align:center">Active?</th><th>Daily Cap</th></tr></thead>
+          <table class="result-table" style="font-size:12px;max-width:580px">
+            <thead><tr><th>Day</th><th>DOW</th><th style="text-align:center">Active?</th><th>Min</th><th>Max</th></tr></thead>
             <tbody>
               ${Array.from({length:12},(_,i)=>i+1).filter(d => !BASIC_BLOCKED.has(d)).map(d => {
                 const lim = (opt.dayLimits || {})[d] || {};
                 const en  = lim.enabled || false;
+                const mn  = lim.min ?? '';
                 const mx  = lim.max ?? '';
+                const inpStyle = (dis) => `width:80px;padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;${dis?'opacity:.4':''}`;
                 return `<tr>
                   <td>Day ${d}</td><td>${DAY_DOW[d-1]}</td>
                   <td style="text-align:center">
@@ -3204,9 +3359,14 @@ function renderBasicActivities() {
                       style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer">
                   </td>
                   <td>
+                    <input type="number" class="b-opt-min" data-idx="${idx}" data-day="${d}"
+                      min="0" placeholder="—" value="${mn}" ${!en?'disabled':''}
+                      style="${inpStyle(!en)}">
+                  </td>
+                  <td>
                     <input type="number" class="b-opt-cap" data-idx="${idx}" data-day="${d}"
                       min="0" placeholder="—" value="${mx}" ${!en?'disabled':''}
-                      style="width:90px;padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;${!en?'opacity:.4':''}">
+                      style="${inpStyle(!en)}">
                   </td>
                 </tr>`;
               }).join('')}
@@ -3223,9 +3383,11 @@ function renderBasicActivities() {
 }
 
 function onOptDayToggle(idx, day, enabled) {
-  document.querySelectorAll(`.b-opt-cap[data-idx="${idx}"][data-day="${day}"]`).forEach(el => {
-    el.disabled = !enabled;
-    el.style.opacity = enabled ? '' : '.4';
+  ['.b-opt-min', '.b-opt-cap'].forEach(cls => {
+    document.querySelectorAll(`${cls}[data-idx="${idx}"][data-day="${day}"]`).forEach(el => {
+      el.disabled = !enabled;
+      el.style.opacity = enabled ? '' : '.4';
+    });
   });
 }
 
@@ -3309,9 +3471,15 @@ function saveBasicActivities() {
     const newLimits = {};
     document.querySelectorAll(`.b-opt-day-cb[data-idx="${idx}"]`).forEach(cb => {
       const d = parseInt(cb.dataset.day);
+      const minEl = document.querySelector(`.b-opt-min[data-idx="${idx}"][data-day="${d}"]`);
       const capEl = document.querySelector(`.b-opt-cap[data-idx="${idx}"][data-day="${d}"]`);
-      const v = capEl?.value.trim();
-      newLimits[d] = { enabled: cb.checked, max: v !== '' && v != null ? parseInt(v) : '' };
+      const mn = minEl?.value.trim();
+      const mx = capEl?.value.trim();
+      newLimits[d] = {
+        enabled: cb.checked,
+        min: mn !== '' && mn != null ? parseInt(mn) : '',
+        max: mx !== '' && mx != null ? parseInt(mx) : '',
+      };
     });
     opt.dayLimits = newLimits;
   });
@@ -4101,16 +4269,19 @@ function runBasicSchedule() {
     const byDay = {};
     let totalSched = 0;
     const sortedDays = Object.keys(opt.dayLimits).map(Number).sort((a,b)=>a-b);
+    let underMinDays = 0;
     for (const d of sortedDays) {
       const lim = opt.dayLimits[d] || {};
       if (!lim.enabled || BASIC_BLOCKED.has(d)) continue;
-      const cap = lim.max !== '' && lim.max != null ? Number(lim.max) : Infinity;
-      const sched = Math.min(cap, availForOpt[d] || 0);
+      const minCap = lim.min !== '' && lim.min != null ? Number(lim.min) : 0;
+      const maxCap = lim.max !== '' && lim.max != null ? Number(lim.max) : Infinity;
+      const sched = Math.min(maxCap, availForOpt[d] || 0);
       byDay[d] = Math.round(sched);
+      if (sched < minCap) underMinDays++;
       availForOpt[d] = Math.max(0, (availForOpt[d]||0) - sched);
       totalSched += Math.round(sched);
     }
-    optResults.push({ name: opt.name, slug: opt.slug, scheduled: totalSched, byDay, dayLimits: opt.dayLimits });
+    optResults.push({ name: opt.name, slug: opt.slug, scheduled: totalSched, byDay, dayLimits: opt.dayLimits, underMinDays });
   }
 
   showBasicScheduleResults({
@@ -4211,27 +4382,36 @@ function showBasicScheduleResults(r) {
     const rows = days.map(d => {
       const sched = opt.byDay[d] || 0;
       const lim   = opt.dayLimits[d] || {};
-      const cap   = lim.enabled ? (lim.max !== '' && lim.max != null ? Number(lim.max) : '—') : '—';
+      const minCap = lim.enabled && lim.min !== '' && lim.min != null ? Number(lim.min) : null;
+      const maxCap = lim.enabled && lim.max !== '' && lim.max != null ? Number(lim.max) : null;
       const enabled = lim.enabled;
-      if (!enabled) return `<tr style="color:var(--muted2)"><td>Day ${d}</td><td>${DAY_DOW[d-1]}</td><td colspan="2" style="font-style:italic">Disabled</td></tr>`;
-      return `<tr>
+      if (!enabled) return `<tr style="color:var(--muted2)"><td>Day ${d}</td><td>${DAY_DOW[d-1]}</td><td colspan="3" style="font-style:italic">Disabled</td></tr>`;
+      const underMin = minCap != null && sched < minCap;
+      const schedCell = underMin
+        ? `<strong style="color:var(--error)">${sched.toLocaleString()} ⚠</strong>`
+        : `<strong>${sched.toLocaleString()}</strong>`;
+      return `<tr ${underMin ? 'style="background:#fdf0ef"' : ''}>
         <td>Day ${d}</td><td>${DAY_DOW[d-1]}</td>
-        <td style="text-align:center"><strong>${sched.toLocaleString()}</strong></td>
-        <td style="text-align:center;color:var(--muted);font-size:11px">${typeof cap === 'number' ? cap.toLocaleString() : cap}</td>
+        <td style="text-align:center">${schedCell}</td>
+        <td style="text-align:center;color:var(--muted);font-size:11px">${minCap != null ? minCap.toLocaleString() : '—'}</td>
+        <td style="text-align:center;color:var(--muted);font-size:11px">${maxCap != null ? maxCap.toLocaleString() : '—'}</td>
       </tr>`;
     }).join('');
     const total = Object.values(opt.byDay).reduce((s,v)=>s+v,0);
+    const underMinNote = opt.underMinDays > 0
+      ? `<div style="font-size:12px;color:var(--error);margin-top:6px">⚠ ${opt.underMinDays} day${opt.underMinDays>1?'s':''} fell below minimum — increase population or reduce other activities.</div>`
+      : '';
     return `<h4 style="margin:20px 0 8px;font-size:13px">${opt.name}</h4>
-      <div style="overflow-x:auto;margin-bottom:8px">
-      <table class="result-table" style="font-size:12px;max-width:400px">
-        <thead><tr><th>Day</th><th>DOW</th><th style="text-align:center">Scheduled</th><th style="text-align:center;color:var(--muted);font-weight:400">Cap</th></tr></thead>
+      <div style="overflow-x:auto;margin-bottom:4px">
+      <table class="result-table" style="font-size:12px;max-width:520px">
+        <thead><tr><th>Day</th><th>DOW</th><th style="text-align:center">Scheduled</th><th style="text-align:center;color:var(--muted);font-weight:400">Min</th><th style="text-align:center;color:var(--muted);font-weight:400">Max</th></tr></thead>
         <tbody>${rows}
           <tr style="font-weight:700;border-top:2px solid var(--border);background:var(--surface2)">
-            <td colspan="2">Total</td><td style="text-align:center">${total.toLocaleString()}</td><td></td>
+            <td colspan="2">Total</td><td style="text-align:center">${total.toLocaleString()}</td><td colspan="2"></td>
           </tr>
         </tbody>
       </table>
-      </div>`;
+      </div>${underMinNote}`;
   }).join('');
 
   // Daily activity summary
