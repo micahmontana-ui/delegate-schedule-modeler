@@ -1264,10 +1264,10 @@ function renderActivities() {
     <div class="stage-title">Stage 4 — Activities</div>
     <div class="stage-desc">Set available dates and per-day limits for each activity. Field Service 1 &amp; 2 and Evening Gathering are pre-loaded. Add more as needed.</div>
 
+    <!-- FS1 + FS2 cards -->
     <div class="field">
-      <label>Required activities</label>
-      <div id="req-act-list"></div>
-      <button class="add-activity-btn" onclick="addReqActivity()">+ Add required activity</button>
+      <label>Field Service</label>
+      <div id="req-act-list-fs"></div>
     </div>
 
     <!-- Field Service shared daily limits -->
@@ -1299,6 +1299,13 @@ function renderActivities() {
       </table>
       <button class="add-row-btn" onclick="addSMPWDateRow()" style="margin-top:8px">+ Add date manually</button>
       <div class="hint">Groups are chosen to minimise under-minimum bus trips.</div>
+    </div>
+
+    <!-- EG AM + EG PM + any other required activities -->
+    <div class="field" style="margin-top:20px;padding-top:20px;border-top:2px solid var(--border)">
+      <label>Required activities</label>
+      <div id="req-act-list-eg"></div>
+      <button class="add-activity-btn" onclick="addReqActivity()">+ Add required activity</button>
     </div>
 
     <div class="field" style="margin-top:24px">
@@ -1371,7 +1378,7 @@ function renderActivities() {
 
 function syncFSCapDates() {
   const fsDates = new Set();
-  document.querySelectorAll('#req-act-list .activity-card').forEach(card => {
+  document.querySelectorAll('#req-act-list-fs .activity-card, #req-act-list-eg .activity-card').forEach(card => {
     const name = card.querySelector('.act-name')?.value?.trim();
     if (name === 'Field Service 1' || name === 'Field Service 2') {
       const gridId = card.querySelector('[id^="dates-"]')?.id;
@@ -1412,7 +1419,7 @@ function syncSMPWDates() {
   const fsDates = new Set();
 
   // From DOM (most current)
-  document.querySelectorAll('#req-act-list .activity-card').forEach(card => {
+  document.querySelectorAll('#req-act-list-fs .activity-card, #req-act-list-eg .activity-card').forEach(card => {
     const name = card.querySelector('.act-name')?.value?.trim();
     if (name === 'Field Service 1' || name === 'Field Service 2') {
       const gridId = card.querySelector('[id^="dates-"]')?.id;
@@ -1468,11 +1475,13 @@ function updatePrefDepthTotal() {
   el.className = 'dist-total ' + (total === 100 ? 'ok' : 'bad');
 }
 
-function addReqActivity(a={}) {
+function addReqActivity(a={}, containerId=null) {
   const id = actCardId++;
   const isMutex = !!a.mutex;
   const isLocked = REQ_DEFAULTS.some(d => d.name === a.name); // can't rename pre-loaded
-  const list = document.getElementById('req-act-list');
+  const isFS = a.name === 'Field Service 1' || a.name === 'Field Service 2';
+  const resolvedContainer = containerId || (isFS ? 'req-act-list-fs' : 'req-act-list-eg');
+  const list = document.getElementById(resolvedContainer);
 
   // EG AM/PM get a visual grouping header
   if (a.name === 'EG AM') {
@@ -1482,8 +1491,6 @@ function addReqActivity(a={}) {
     header.textContent = '⟶ Evening Gathering (EG AM & EG PM are the same event — groups get one or the other, never both)';
     list.appendChild(header);
   }
-
-  const isFS = a.name === 'Field Service 1' || a.name === 'Field Service 2';
   const limitsId = `act-limits-${id}`;
   const div = document.createElement('div');
   div.className = 'activity-card' + (isMutex ? ' mutex-card' : '');
@@ -1725,7 +1732,7 @@ function saveActivities() {
     return limits;
   }
 
-  data.requiredActivities = [...document.querySelectorAll('#req-act-list .activity-card')].map(card => {
+  data.requiredActivities = [...document.querySelectorAll('#req-act-list-fs .activity-card, #req-act-list-eg .activity-card')].map(card => {
     const gridId = card.querySelector('[id^="dates-"]')?.id;
     const dates = gridId ? collectDatesFromGrid(gridId) : [];
     const isFS = ['Field Service 1','Field Service 2'].includes(card.dataset.actName);
