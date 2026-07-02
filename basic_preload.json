@@ -1,0 +1,82 @@
+{
+  "seed": 42,
+  "population": {
+    "type": "delegates",
+    "count": 6000,
+    "gsd": [
+      { "size": "1", "pct": "4"  },
+      { "size": "2", "pct": "47" },
+      { "size": "3", "pct": "11" },
+      { "size": "4", "pct": "20" },
+      { "size": "5", "pct": "5"  },
+      { "size": "6", "pct": "7"  },
+      { "size": "7", "pct": "3"  },
+      { "size": "8", "pct": "3"  }
+    ],
+    "los": [
+      { "nights": 6, "pct": 36 },
+      { "nights": 7, "pct": 45 },
+      { "nights": 8, "pct": 14 },
+      { "nights": 9, "pct":  5 }
+    ],
+    "arrival": { "D1": 0, "D2": 3, "D3": 48, "D4": 36, "D5": 13 }
+  },
+  "smpwTotal": 200,
+  "fsFineTune": true,
+  "fsDayLimits": {
+    "2":  { "min": null, "max": 150  },
+    "3":  { "min": null, "max": 2000 },
+    "4":  { "min": null, "max": 2800 },
+    "5":  { "min": null, "max": 2650 },
+    "6":  { "min": null, "max": 2600 },
+    "10": { "min": null, "max": 1200 },
+    "11": { "min": null, "max": 600  }
+  },
+  "egSchedule": {
+    "1":  { "show1": { "enabled": false, "min": null, "max": null }, "show2": { "enabled": false, "min": null, "max": null } },
+    "2":  { "show1": { "enabled": false, "min": null, "max": null }, "show2": { "enabled": false, "min": null, "max": null } },
+    "3":  { "show1": { "enabled": false, "min": null, "max": null }, "show2": { "enabled": false, "min": null, "max": null } },
+    "4":  { "show1": { "enabled": true,  "min": null, "max": 1000 }, "show2": { "enabled": false, "min": null, "max": null } },
+    "5":  { "show1": { "enabled": true,  "min": null, "max": 1800 }, "show2": { "enabled": false, "min": null, "max": null } },
+    "6":  { "show1": { "enabled": true,  "min": null, "max": 1300 }, "show2": { "enabled": false, "min": null, "max": null } },
+    "7":  { "show1": { "enabled": false, "min": null, "max": null }, "show2": { "enabled": false, "min": null, "max": null } },
+    "8":  { "show1": { "enabled": false, "min": null, "max": null }, "show2": { "enabled": false, "min": null, "max": null } },
+    "9":  { "show1": { "enabled": false, "min": null, "max": null }, "show2": { "enabled": false, "min": null, "max": null } },
+    "10": { "show1": { "enabled": true,  "min": null, "max": 1300 }, "show2": { "enabled": false, "min": null, "max": null } },
+    "11": { "show1": { "enabled": true,  "min": null, "max":  600 }, "show2": { "enabled": false, "min": null, "max": null } },
+    "12": { "show1": { "enabled": false, "min": null, "max": null }, "show2": { "enabled": false, "min": null, "max": null } }
+  },
+  "optionalActivities": [
+    {
+      "name": "Douglas",
+      "slug": "douglas",
+      "dayLimits": {
+        "3": { "enabled": true, "max": 800  },
+        "4": { "enabled": true, "max": 800  },
+        "5": { "enabled": true, "max": 800  },
+        "6": { "enabled": true, "max": 1000 }
+      }
+    },
+    {
+      "name": "Four Mile",
+      "slug": "fourmile",
+      "dayLimits": {
+        "4": { "enabled": true, "max": 300 },
+        "5": { "enabled": true, "max": 300 },
+        "6": { "enabled": true, "max": 300 }
+      }
+    },
+    {
+      "name": "Food Tour",
+      "slug": "foodtour",
+      "dayLimits": {
+        "3":  { "enabled": true, "max": 200 },
+        "4":  { "enabled": true, "max": 200 },
+        "5":  { "enabled": true, "max": 200 },
+        "6":  { "enabled": true, "max": 200 },
+        "10": { "enabled": true, "max": 200 },
+        "11": { "enabled": true, "max": 200 }
+      }
+    }
+  ]
+}
