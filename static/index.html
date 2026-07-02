@@ -3600,7 +3600,33 @@ function runFeasibility() {
   const fsAct  = dataBasic.activities.find(a => a.slug === 'fs');
   const egAct  = dataBasic.activities.find(a => a.slug === 'eg');
   const fsResult = computeActivity(fsAct, 2); // each delegate does both FS1 and FS2
-  const egResult = computeActivity(egAct, 1);
+
+  // EG requires FS1 + FS2 first — only count EG days that come after a group's 2nd FS day.
+  const fsDays = [...new Set(fsAct.days)].sort((a, b) => a - b);
+  function computeEGActivity(act) {
+    const actDays = new Set(act.days);
+    let miss = 0;
+    const demand = {};
+    for (let d = 1; d <= 12; d++) demand[d] = 0;
+    for (const grp of groups) {
+      // Find the group's 2 earliest eligible FS days (they need both FS1 and FS2)
+      const grpFSDays = fsDays.filter(d => d > grp.checkin && d < grp.checkout && !BASIC_BLOCKED.has(d));
+      if (grpFSDays.length < 2) { miss += grp.size; continue; } // can't do both FS sessions
+      const secondFSDay = grpFSDays[1]; // earliest day they could finish their 2nd FS
+      // EG feasible days must be strictly after their 2nd FS day
+      const feasible = [];
+      for (let d = grp.checkin + 1; d <= grp.checkout - 1; d++) {
+        if (d > secondFSDay && !BASIC_BLOCKED.has(d) && actDays.has(d)) feasible.push(d);
+      }
+      if (feasible.length === 0) { miss += grp.size; }
+      else {
+        const share = grp.size / feasible.length;
+        feasible.forEach(d => { demand[d] += share; });
+      }
+    }
+    return { name: act.name, slug: act.slug, miss, total: delegateCount, demand, sessions: act.sessionsPerDay || 1, actDays };
+  }
+  const egResult = computeEGActivity(egAct);
   const totalFSDemand = Object.values(fsResult.demand).reduce((s, v) => s + v, 0);
 
   showBasicResults(fsResult, egResult, delegateCount, dataBasic.smpwTotal || 0, totalFSDemand, dailyAvail);

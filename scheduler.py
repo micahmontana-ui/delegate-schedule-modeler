@@ -155,12 +155,22 @@ def schedule(
                 })
                 continue
 
+            # Calendar ordering: if this activity has prerequisites, it can only be
+            # scheduled on a day strictly after all prerequisite assignments.
+            earliest_allowed: date | None = None
+            if prereqs:
+                prereq_dates = [df.at[idx, f"req_{p}"] for p in prereqs if pd.notna(df.at[idx, f"req_{p}"])]
+                if prereq_dates:
+                    earliest_allowed = max(prereq_dates)
+
             # Available dates: in candidate window, not already taken
             # (unless a same-day exception applies between this activity and the one on that day)
             allowed_same_day = same_day_map.get(act_name, set())
             available_dates = [
                 d for d in act_def["dates"]
-                if d in candidate_days and (
+                if d in candidate_days
+                and (earliest_allowed is None or d > earliest_allowed)
+                and (
                     d not in day_to_activity or
                     day_to_activity[d] in allowed_same_day
                 )
